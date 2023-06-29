@@ -37,3 +37,42 @@ def plot_regression(X, Y):
     plt.title('Scatter plot with regression lines')
 
     plt.show()
+
+
+    def backtest(df, col_signal, col_price):
+    """
+    df: DataFrame that contains the data
+    col_signal: Name of the column that contains the trading signals
+    col_price: Name of the column that contains the price data
+    """
+    # Initialize variables
+    position = 0  # 1 if we currently hold a position, 0 otherwise
+    buy_price = 0  # Price at which we bought in
+    equity = []  # Equity curve
+
+    # Iterate over the DataFrame
+    for i, row in df.iterrows():
+        signal = row[col_signal]
+        price = row[col_price]
+        if signal == 1 and position == 0:  # Buy
+            position = 1
+            buy_price = price
+        elif signal == -1 and position == 1:  # Sell
+            position = 0
+            equity.append(price - buy_price)
+        elif position == 1:  # Holding
+            equity.append(price - buy_price)
+        else:  # Nothing
+            equity.append(0)
+            
+    # Convert the equity curve into a Series and add it to the DataFrame
+    equity_series = pd.Series(equity, index=df.index, name='equity')
+    df = pd.concat([df, equity_series], axis=1)
+
+    return df
+
+# Use the backtest function
+df = backtest(df, 'predictions', 'weighted_mid_price')
+
+# Plot the equity curve
+df['equity'].cumsum().plot()
