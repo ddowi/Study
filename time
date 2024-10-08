@@ -1,0 +1,62 @@
+import pandas as pd
+import numpy as np
+
+# 假设 df 是包含 timestamp, date, col2, col3 的 DataFrame
+
+# 确保 timestamp 列为 datetime 类型
+df['timestamp'] = pd.to_datetime(df['timestamp'])
+df['date'] = pd.to_datetime(df['date']).dt.date  # 确保 date 是日期类型
+
+# 定义时间间隔的阈值列表（秒）
+thresholds = [1, 3, 5, 7, 10, 15, 30, 45, 60, 120, 180]
+
+# 定义一个函数来计算每个子 DataFrame 内的日内时间间隔
+def get_intraday_diffs(df_group):
+    # 按 timestamp 排序
+    df_group = df_group.sort_values('timestamp')
+
+    # 计算相邻时间的差值
+    time_deltas = df_group['timestamp'].diff().dropna()
+
+    # 筛选出只属于同一天的时间差
+    same_day_deltas = time_deltas[df_group['timestamp'].dt.date == df_group['timestamp'].shift(1).dt.date]
+
+    # 返回这些相邻同一天的时间差（以秒为单位）
+    return same_day_deltas.dt.total_seconds()
+
+# 按 col2 和 col3 分组
+grouped = df.groupby(['col2', 'col3'])
+
+# 用于存储结果的表格
+results = {}
+
+# 遍历每个分组，计算各个阈值下时间差的占比
+for (col2_val, col3_val), group in grouped:
+    # 获取当前分组的日内时间差
+    diffs = get_intraday_diffs(group)
+    
+    # 初始化一个字典来存储当前分组的阈值占比
+    threshold_percentages = {}
+
+    # 如果该分组有时间差数据，计算各个时间差小于不同阈值的占比
+    if not diffs.empty:
+        total_count = len(diffs)
+        for threshold in thresholds:
+            count_below_threshold = (diffs <= threshold).sum()
+            percentage_below_threshold = count_below_threshold / total_count * 100  # 转换为百分比
+            threshold_percentages[threshold] = percentage_below_threshold
+
+    # 将当前分组的结果保存到结果表格中
+    if col2_val not in results:
+        results[col2_val] = {}
+    results[col2_val][col3_val] = threshold_percentages
+
+# 将结果转换为 DataFrame 格式
+output = {}
+for col2_val, col3_data in results.items():
+    output[col2_val] = pd.DataFrame.from_dict(col3_data, orient='index')
+
+# 打印每个 col2 分组的表格
+for col2_val, df_result in output.items():
+    print(f"\nResults for col2 = {col2_val}:")
+    print(df_result)
