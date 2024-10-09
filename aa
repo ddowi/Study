@@ -1,0 +1,60 @@
+import pandas as pd
+import numpy as np
+
+# 假设 df 是包含 timestamp, date, col2, col3 的 DataFrame
+
+# 确保 timestamp 列为 datetime 类型
+df['timestamp'] = pd.to_datetime(df['timestamp'])
+df['date'] = pd.to_datetime(df['date']).dt.date  # 确保 date 是日期类型
+
+# 定义时间间隔的阈值列表（秒）
+thresholds = [1, 3, 5, 7, 10, 15, 30, 45, 60, 120, 180]
+
+# 创建一个函数，添加 time_diff 列
+def add_time_diff(df_group):
+    df_group = df_group.sort_values('timestamp')  # 按时间戳排序
+    df_group['time_diff'] = df_group['timestamp'].diff().dt.total_seconds()  # 计算时间差，以秒为单位
+    return df_group
+
+# 按 col2 和 col3 分组，并添加 time_diff 列
+df = df.groupby(['col2', 'col3']).apply(add_time_diff)
+
+# 定义一个函数来计算每个阈值下时间差小于阈值的占比
+def calculate_threshold_percentages(df_group):
+    total_count = len(df_group)  # 总时间戳数量
+    threshold_percentages = {}
+
+    for threshold in thresholds:
+        # 通过判断 time_diff 小于阈值来筛选满足条件的行
+        below_threshold = df_group['time_diff'] <= threshold
+
+        # 使用 shift() 来标记该时间差对应的上一个时间戳
+        below_threshold = below_threshold | below_threshold.shift(-1, fill_value=False)
+
+        # 计算满足条件的时间戳占比
+        count_below_threshold = below_threshold.sum()
+        percentage_below_threshold = count_below_threshold / total_count * 100  # 转换为百分比
+        threshold_percentages[threshold] = percentage_below_threshold
+
+    return threshold_percentages
+
+# 按 col2 和 col3 分组，计算每个分组的时间差占比
+results = {}
+grouped = df.groupby(['col2', 'col3'])
+
+for (col2_val, col3_val), group in grouped:
+    threshold_percentages = calculate_threshold_percentages(group)
+
+    if col2_val not in results:
+        results[col2_val] = {}
+    results[col2_val][col3_val] = threshold_percentages
+
+# 将结果转换为 DataFrame 格式
+output = {}
+for col2_val, col3_data in results.items():
+    output[col2_val] = pd.DataFrame.from_dict(col3_data, orient='index')
+
+# 打印每个 col2 分组的表格
+for col2_val, df_result in output.items():
+    print(f"\nResults for col2 = {col2_val}:")
+    print(df_result)
