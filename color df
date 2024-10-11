@@ -1,0 +1,36 @@
+import pandas as pd
+
+# 创建示例数据
+data = {
+    'Name': ['Alice', 'Bob', 'Charlie', 'David'],
+    'Age': [25, 30, 35, 40],
+    'Score': [88, 92, 85, 87]
+}
+df = pd.DataFrame(data)
+
+# 自定义颜色
+header_color = 'background-color: #931F2D'  # 深红色
+row_colors = ['background-color: #F5E0DB',  # 浅红色
+              'background-color: #FAF4F2']  # 浅浅红色
+
+# 定义样式
+def style_dataframe(df):
+    # 定义header的样式为深红色
+    styled = df.style.set_table_styles(
+        [{
+            'selector': 'thead th',
+            'props': [('background-color', '#931F2D'), ('color', 'white')]
+        }]
+    )
+    
+    # 行之间交替使用浅红色和浅浅红色
+    styled = styled.apply(
+        lambda x: [row_colors[i % 2] for i in range(len(x))],
+        axis=0
+    )
+    
+    return styled
+
+# 在Notebook中显示带样式的DataFrame
+styled_df = style_dataframe(df)
+styled_df
