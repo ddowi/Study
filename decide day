@@ -1,0 +1,33 @@
+import pandas as pd
+import numpy as np
+from pandas.tseries.offsets import BMonthEnd
+
+# 假设 df 是你的 trade data 数据集，并且有 'date' 列
+# 确保 'date' 列已经转换为 datetime 格式
+df['date'] = pd.to_datetime(df['date'])
+
+# 定义一个函数，计算某个月的第三个星期三
+def third_wednesday(dt):
+    # 找到这个月的第一个星期三
+    first_wednesday = dt.replace(day=1) + pd.offsets.Week(weekday=2)
+    # 第三个星期三是第一个星期三加上2周
+    third_wed = first_wednesday + pd.offsets.Week(2)
+    return third_wed
+
+# 定义一个函数来判断给定日期属于哪个月
+def get_adjusted_month(row):
+    # 计算该日期所在月份的第三个星期三
+    third_wed = third_wednesday(row['date'].replace(day=1))
+    # 判断日期是在第三个星期三之前还是之后
+    if row['date'] <= third_wed:
+        # 如果是在第三个星期三之前，返回这个月的月份
+        return row['date'].to_period('M')
+    else:
+        # 如果是在第三个星期三之后，返回下个月的月份
+        return (row['date'] + pd.DateOffset(months=1)).to_period('M')
+
+# 应用这个规则来创建 'adjusted_month' 列
+df['adjusted_month'] = df.apply(get_adjusted_month, axis=1)
+
+# 查看结果
+print(df[['date', 'adjusted_month']])
