@@ -1,0 +1,44 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+def calculate_buy_ratio_proportion_heatmap(df, frequencies, ratio_ranges):
+    heatmap_data = []
+    
+    for freq in frequencies:
+        # 根据每个频率计算 buy_ratio
+        ratio_df = calculate_notional_ratio(df, frequency=freq)
+        freq_proportions = []
+        
+        # 总记录数
+        total_count = len(ratio_df)
+        
+        for ratio_range in ratio_ranges:
+            # 计算 buy_ratio 在该区间的比例
+            count_in_range = ((ratio_df['buy_ratio'] >= ratio_range[0]) & 
+                              (ratio_df['buy_ratio'] <= ratio_range[1])).sum()
+            proportion = count_in_range / total_count if total_count > 0 else 0
+            freq_proportions.append(proportion)
+        
+        heatmap_data.append(freq_proportions)
+    
+    # 转换为 DataFrame，行为频率，列为 buy_ratio 范围
+    heatmap_df = pd.DataFrame(heatmap_data, index=frequencies, columns=[f'{r[0]}-{r[1]}' for r in ratio_ranges])
+    
+    return heatmap_df
+
+# 定义频率和 buy_ratio 范围
+frequencies = ['5min', '10min', '30min', '1H']
+ratio_ranges = [(0.45, 0.55), (0.4, 0.6), (0.3, 0.7), (0.2, 0.8), (0, 1)]
+
+# 生成热图数据
+heatmap_df = calculate_buy_ratio_proportion_heatmap(df, frequencies, ratio_ranges)
+
+# 绘制热图
+plt.figure(figsize=(10, 6))
+sns.heatmap(heatmap_df, annot=True, cmap='YlGnBu', fmt='.2%', cbar_kws={'label': 'Proportion of buy_ratio in range'})
+plt.xlabel('Buy Ratio Ranges')
+plt.ylabel('Frequency Intervals')
+plt.title('Heatmap of Buy Ratio Proportions Across Different Frequencies')
+plt.show()
