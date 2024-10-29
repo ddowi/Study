@@ -1,0 +1,33 @@
+import matplotlib.pyplot as plt
+
+# 假设 `summary_df` 已经生成并包含前三列的数据
+# 生成模拟数据以进行绘图
+import pandas as pd
+import numpy as np
+
+# 模拟的 summary_df 数据
+data = {
+    "Against Ratio": np.random.uniform(0.3, 0.7, 10),
+    "In Favor Ratio": np.random.uniform(0.2, 0.5, 10),
+    "No Move Ratio": np.random.uniform(0, 0.2, 10)
+}
+index = pd.date_range("2024-09-28 12:00:00", periods=10, freq='H')
+summary_df = pd.DataFrame(data, index=index)
+
+# 绘图
+plt.figure(figsize=(12, 6))
+
+# 绘制 Against Ratio, In Favor Ratio, No Move Ratio 三个列
+plt.plot(summary_df.index, summary_df["Against Ratio"], label="Against Ratio", marker='o')
+plt.plot(summary_df.index, summary_df["In Favor Ratio"], label="In Favor Ratio", marker='o')
+plt.plot(summary_df.index, summary_df["No Move Ratio"], label="No Move Ratio", marker='o')
+
+# 设置图例和标题
+plt.legend()
+plt.title("Ratios Over Time")
+plt.xlabel("Time Out")
+plt.ylabel("Ratio")
+plt.xticks(rotation=45)
+plt.grid(True)
+plt.tight_layout()
+plt.show()
