@@ -1,0 +1,33 @@
+import pandas as pd
+
+# 示例数据
+data = pd.DataFrame({
+    'timestamp': pd.to_datetime([
+        '2024-10-30 09:15', '2024-10-30 09:50', '2024-10-30 10:20', '2024-10-30 11:10'
+    ]),
+    'value': [10, 15, 20, 25]
+})
+data = data.set_index('timestamp')
+
+# 按照每个数据点的时间戳生成动态分组
+groups = []
+group_start_idx = 0
+
+while group_start_idx < len(data):
+    # 当前组的基准时间（即第一个未分组数据点的时间戳）
+    current_start_time = data.index[group_start_idx]
+    current_end_time = current_start_time + pd.Timedelta(hours=1)
+    
+    # 找到所有在当前组时间范围内的数据点
+    mask = (data.index >= current_start_time) & (data.index < current_end_time)
+    group = data[mask]
+    
+    # 将分组结果保存到列表
+    groups.append(group)
+    
+    # 跳到下一个未分组的数据点
+    group_start_idx += len(group)
+
+# 输出每个动态分组的结果
+for i, group in enumerate(groups):
+    print(f"Group {i+1}:\n{group}\n")
