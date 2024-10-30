@@ -1,0 +1,39 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# 假设 order_book_data 有 'time', 'bid0', 'ask0' 列
+# 假设 trade_data 有 'time', 'price', 'side' 列
+
+# 设置时间为索引，确保时间数据对齐
+order_book_data['time'] = pd.to_datetime(order_book_data['time'])
+trade_data['time'] = pd.to_datetime(trade_data['time'])
+
+# 设置图形风格
+plt.style.use('seaborn-darkgrid')
+plt.figure(figsize=(14, 7))
+
+# 填充 bid0 和 ask0 之间的区域
+plt.fill_between(order_book_data['time'], order_book_data['bid0'], order_book_data['ask0'],
+                 color='gray', alpha=0.3, label='Bid-Ask Spread')
+
+# 绘制 bid0 和 ask0 曲线
+plt.plot(order_book_data['time'], order_book_data['bid0'], label='Bid0', color='blue', linewidth=1.5)
+plt.plot(order_book_data['time'], order_book_data['ask0'], label='Ask0', color='red', linewidth=1.5)
+
+# 在图上标注 trade data 的点
+# 买单用绿色点，卖单用红色点，设置透明度让点更突出
+buy_trades = trade_data[trade_data['side'] == 'Buy']
+sell_trades = trade_data[trade_data['side'] == 'Sell']
+
+plt.scatter(buy_trades['time'], buy_trades['price'], color='lime', marker='o', label='Buy Trades', s=60, alpha=0.7)
+plt.scatter(sell_trades['time'], sell_trades['price'], color='crimson', marker='x', label='Sell Trades', s=60, alpha=0.7)
+
+# 添加标题、图例、标签
+plt.title('Order Book Data with Bid-Ask Spread and Trade Data Points', fontsize=16)
+plt.xlabel('Time')
+plt.ylabel('Price')
+plt.xticks(rotation=45)
+plt.legend(loc='upper left', fontsize=12)
+plt.tight_layout()
+
+plt.show()
