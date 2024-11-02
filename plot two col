@@ -1,0 +1,27 @@
+import matplotlib.pyplot as plt
+
+# 假设你有两个列的数据
+x = [1, 2, 3, 4, 5]
+col1 = [10, 20, 30, 40, 50]
+col2 = [0.1, 0.2, 0.3, 0.4, 0.5]
+
+# 创建一个图
+fig, ax1 = plt.subplots()
+
+# 绘制第一个数据集在左边的 y 轴
+ax1.plot(x, col1, 'g-', label='Column 1')  # 'g-' 表示绿色实线
+ax1.set_xlabel('X-axis')
+ax1.set_ylabel('Column 1', color='g')
+ax1.tick_params(axis='y', labelcolor='g')
+
+# 创建一个共享 x 轴的第二个 y 轴
+ax2 = ax1.twinx()
+ax2.plot(x, col2, 'b-', label='Column 2')  # 'b-' 表示蓝色实线
+ax2.set_ylabel('Column 2', color='b')
+ax2.tick_params(axis='y', labelcolor='b')
+
+# 添加标题
+plt.title('Dual Y-Axis Plot')
+
+# 显示图
+plt.show()
