@@ -1,0 +1,65 @@
+import pandas as pd
+
+# 示例数据
+data_open_orders = {
+    'orderId': [1, 1, 1, 2, 2],
+    'time': ['2024-11-12 09:00', '2024-11-12 10:00', '2024-11-12 11:00', '2024-11-12 09:30', '2024-11-12 10:30'],
+    'side': ['Buy', 'Buy', 'Buy', 'Sell', 'Sell'],
+    'ticker': ['AAPL', 'AAPL', 'AAPL', 'MSFT', 'MSFT'],
+    'notionalSize': [1000, 1000, 1000, 500, 500],
+    'executedNotionalSize': [100, 200, 300, 100, 200],
+    'price': [150, 151, 152, 250, 251]
+}
+
+data_rfq = {
+    'time': ['2024-11-12 09:15', '2024-11-12 09:45', '2024-11-12 10:15', '2024-11-12 11:15', '2024-11-12 09:40'],
+    'side': ['Buy', 'Buy', 'Buy', 'Sell', 'Sell'],
+    'notionalSize': [150, 250, 300, 150, 100],
+    'ticker': ['AAPL', 'AAPL', 'AAPL', 'MSFT', 'MSFT'],
+    'price': [150.5, 151.2, 152.3, 250.1, 250.5]
+}
+
+# 转换为DataFrame并调整时间格式
+df_open_orders = pd.DataFrame(data_open_orders)
+df_open_orders['time'] = pd.to_datetime(df_open_orders['time'])
+
+df_rfq = pd.DataFrame(data_rfq)
+df_rfq['time'] = pd.to_datetime(df_rfq['time'])
+
+# 创建结果存储结构
+results = []
+
+# 对 open_orders 按 orderId 分组并遍历
+for orderId, group in df_open_orders.groupby('orderId'):
+    # 按时间排序
+    group = group.sort_values('time')
+    group = group.reset_index(drop=True)
+    
+    for i in range(len(group) - 1):
+        # 获取当前行和下一行时间段
+        start_time = group.loc[i, 'time']
+        end_time = group.loc[i + 1, 'time']
+        rest_notional_size = group.loc[i, 'notionalSize'] - group.loc[i, 'executedNotionalSize']
+        
+        # 筛选 rfq 数据中在该时间段内、同ticker和side的记录
+        rfq_filtered = df_rfq[
+            (df_rfq['time'] >= start_time) &
+            (df_rfq['time'] < end_time) &
+            (df_rfq['ticker'] == group.loc[i, 'ticker']) &
+            (df_rfq['side'] == group.loc[i, 'side'])
+        ]
+        
+        # 遍历筛选出的 rfq 记录，记录 notional 和 price
+        for _, rfq_row in rfq_filtered.iterrows():
+            results.append({
+                'orderId': orderId,
+                'start_time': start_time,
+                'end_time': end_time,
+                'restNotionalSize': rest_notional_size,
+                'rfq_notional': rfq_row['notionalSize'],
+                'rfq_price': rfq_row['price']
+            })
+
+# 将结果转为DataFrame显示
+df_results = pd.DataFrame(results)
+import ace_tools as tools; tools.display_dataframe_to_user(name="RFQ Matching Results", dataframe=df_results)
