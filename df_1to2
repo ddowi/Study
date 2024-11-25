@@ -1,0 +1,37 @@
+import pandas as pd
+
+# 示例 DataFrame
+data = {
+    'col1': [1, 2],
+    'col2': [3, 4],
+    'lastSize': [10, 20],
+    'OFTR1': [0, 2],
+    'OFTR2': [1, 0],
+    'OFTR3': [0, 5]
+}
+df = pd.DataFrame(data)
+
+# 处理函数
+def expand_rows(df):
+    rows = []
+    for _, row in df.iterrows():
+        # 获取第五列之后非零非NA的列名和值
+        for col_name in df.columns[4:]:  # 取第五列之后的列名
+            if pd.notna(row[col_name]) and row[col_name] != 0:
+                # 创建新的行
+                new_row = row.copy()
+                new_row['OFTRSecurity'] = col_name
+                new_row['OFTRSize'] = row[col_name] * row['lastSize']
+                rows.append(new_row)
+    
+    # 将新的行合并为 DataFrame
+    return pd.DataFrame(rows)
+
+# 调用函数
+expanded_df = expand_rows(df)
+
+# 重置索引
+expanded_df.reset_index(drop=True, inplace=True)
+
+# 查看结果
+print(expanded_df)
