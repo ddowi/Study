@@ -1,0 +1,47 @@
+import pandas as pd
+
+# 示例RFQ数据
+rfq_df = pd.DataFrame({
+    'rfqId': [1, 2, 3, 4, 5, 6],
+    'timestamp': [1.0, 1.2, 2.5, 1.8, 2.1, 2.6],
+    'ticker': ['30yOTR', '30y30y', '30yO', '10yOTR', '10y10y', '2yOTR'],
+    'size': [100, 100, 200, 300, 200, 150],
+    'quotePrice': [99.5, 100.5, 101.0, 102.0, 101.5, 103.0],
+    'side': ['Buy', 'Sell', 'Buy', 'Sell', 'Buy', 'Sell']
+})
+
+# 提取ticker的前缀
+def extract_prefix(ticker):
+    if ticker.startswith(('10y', '20y', '30y')):
+        return ticker[:3]
+    elif ticker.startswith(('2y', '3y', '5y', '7y')):
+        return ticker[:2]
+    return None
+
+rfq_df['ticker_prefix'] = rfq_df['ticker'].apply(extract_prefix)
+
+# Buy和Sell分开
+buy_df = rfq_df[rfq_df['side'] == 'Buy']
+sell_df = rfq_df[rfq_df['side'] == 'Sell']
+
+# 笛卡尔积（cross join）
+merged = buy_df.merge(sell_df, on='ticker_prefix', suffixes=('_buy', '_sell'))
+
+# 筛选符合条件的组合
+merged = merged[
+    (merged['ticker_buy'] != merged['ticker_sell']) &  # 排除与自己匹配
+    (abs(merged['timestamp_buy'] - merged['timestamp_sell']) <= 1.0)  # 时间窗口
+]
+
+# 分配唯一的switchTradeId
+merged['switchTradeId'] = range(1, len(merged) + 1)
+
+# 更新原始表
+rfq_df['switchTradeId'] = None
+
+for _, row in merged.iterrows():
+    rfq_df.loc[rfq_df['rfqId'] == row['rfqId_buy'], 'switchTradeId'] = row['switchTradeId']
+    rfq_df.loc[rfq_df['rfqId'] == row['rfqId_sell'], 'switchTradeId'] = row['switchTradeId']
+
+# 输出结果
+print(rfq_df)
