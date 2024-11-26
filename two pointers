@@ -1,0 +1,80 @@
+import pandas as pd
+import numpy as np
+
+# 生成模拟数据
+n = 80000
+rfq_df = pd.DataFrame({
+    'rfqId': range(1, n + 1),
+    'timestamp': np.random.uniform(0, 3600, n),  # 模拟1小时内的时间戳
+    'ticker': np.random.choice(['30yOTR', '30y30y', '10yOTR', '10y10y', '2yOTR'], n),
+    'size': np.random.randint(100, 1000, n),
+    'quotePrice': np.random.uniform(99, 105, n),
+    'side': np.random.choice(['Buy', 'Sell'], n)
+})
+
+# 提取ticker的前缀
+def extract_prefix(ticker):
+    if ticker.startswith(('10y', '20y', '30y')):
+        return ticker[:3]
+    elif ticker.startswith(('2y', '3y', '5y', '7y')):
+        return ticker[:2]
+    return None
+
+rfq_df['ticker_prefix'] = rfq_df['ticker'].apply(extract_prefix)
+
+# 分离Buy和Sell
+buy_df = rfq_df[rfq_df['side'] == 'Buy'].sort_values(['ticker_prefix', 'timestamp'])
+sell_df = rfq_df[rfq_df['side'] == 'Sell'].sort_values(['ticker_prefix', 'timestamp'])
+
+# 时间窗口
+time_window = 1.0
+
+# 初始化结果存储
+results = []
+
+# 双指针算法
+for prefix in buy_df['ticker_prefix'].unique():
+    buy_group = buy_df[buy_df['ticker_prefix'] == prefix]
+    sell_group = sell_df[sell_df['ticker_prefix'] == prefix]
+    
+    i, j = 0, 0
+    while i < len(buy_group) and j < len(sell_group):
+        buy_row = buy_group.iloc[i]
+        sell_row = sell_group.iloc[j]
+        
+        # 时间差
+        time_diff = sell_row['timestamp'] - buy_row['timestamp']
+        
+        # 匹配条件
+        if 0 <= time_diff <= time_window and buy_row['ticker'] != sell_row['ticker']:
+            results.append({
+                'rfqId_buy': buy_row['rfqId'],
+                'rfqId_sell': sell_row['rfqId'],
+                'timestamp_buy': buy_row['timestamp'],
+                'timestamp_sell': sell_row['timestamp'],
+                'ticker_buy': buy_row['ticker'],
+                'ticker_sell': sell_row['ticker'],
+                'ticker_prefix': prefix
+            })
+            i += 1  # 一个买单只能匹配一个卖单
+        elif time_diff > time_window:
+            i += 1  # 当前Buy过早，移动Buy指针
+        else:
+            j += 1  # 当前Sell过早，移动Sell指针
+
+# 转为DataFrame
+switch_trades = pd.DataFrame(results)
+
+# 为每对匹配分配唯一的SwitchTradeId
+switch_trades['switchTradeId'] = range(1, len(switch_trades) + 1)
+
+# 在原始数据中标记
+rfq_df['switchTradeId'] = None
+for _, row in switch_trades.iterrows():
+    rfq_df.loc[rfq_df['rfqId'] == row['rfqId_buy'], 'switchTradeId'] = row['switchTradeId']
+    rfq_df.loc[rfq_df['rfqId'] == row['rfqId_sell'], 'switchTradeId'] = row['switchTradeId']
+
+# 输出结果
+print(f"总匹配数: {len(switch_trades)}")
+print("原始数据标记后的结果：")
+print(rfq_df.head())
