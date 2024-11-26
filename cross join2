@@ -1,0 +1,77 @@
+import pandas as pd
+
+# 示例RFQ数据
+rfq_df = pd.DataFrame({
+    'rfqId': [1, 2, 3, 4, 5, 6],
+    'timestamp': [1.0, 1.2, 2.5, 1.8, 2.1, 2.6],
+    'ticker': ['30yOTR', '30y30y', '30yO', '10yOTR', '10y10y', '2yOTR'],
+    'size': [100, 100, 200, 300, 200, 150],
+    'quotePrice': [99.5, 100.5, 101.0, 102.0, 101.5, 103.0],
+    'side': ['Buy', 'Sell', 'Buy', 'Sell', 'Buy', 'Sell']
+})
+
+# 提取ticker的前缀
+def extract_prefix(ticker):
+    if ticker.startswith(('10y', '20y', '30y')):
+        return ticker[:3]
+    elif ticker.startswith(('2y', '3y', '5y', '7y')):
+        return ticker[:2]
+    return None
+
+rfq_df['ticker_prefix'] = rfq_df['ticker'].apply(extract_prefix)
+
+# Buy和Sell分开
+buy_df = rfq_df[rfq_df['side'] == 'Buy']
+sell_df = rfq_df[rfq_df['side'] == 'Sell']
+
+# 限制时间窗口
+time_window = 1.0
+
+# 初始化结果列表
+results = []
+
+# 按ticker_prefix分组
+buy_groups = buy_df.groupby('ticker_prefix')
+sell_groups = sell_df.groupby('ticker_prefix')
+
+# 逐组匹配
+for prefix, buy_group in buy_groups:
+    if prefix in sell_groups.groups:
+        sell_group = sell_groups.get_group(prefix)
+        
+        # 对当前组进行笛卡尔积匹配
+        merged = buy_group.merge(sell_group, on='ticker_prefix', suffixes=('_buy', '_sell'))
+        
+        # 筛选符合条件的组合
+        merged = merged[
+            (merged['ticker_buy'] != merged['ticker_sell']) &  # 排除自己匹配自己
+            (abs(merged['timestamp_buy'] - merged['timestamp_sell']) <= time_window)  # 时间窗口
+        ]
+        
+        if not merged.empty:
+            results.append(merged)
+
+# 合并所有结果
+if results:
+    merged_results = pd.concat(results, ignore_index=True)
+    merged_results['switchTradeId'] = range(1, len(merged_results) + 1)
+    
+    # 更新原始表
+    rfq_df['switchTradeId'] = None
+    for _, row in merged_results.iterrows():
+        rfq_df.loc[rfq_df['rfqId'] == row['rfqId_buy'], 'switchTradeId'] = row['switchTradeId']
+        rfq_df.loc[rfq_df['rfqId'] == row['rfqId_sell'], 'switchTradeId'] = row['switchTradeId']
+else:
+    rfq_df['switchTradeId'] = None
+
+# 输出结果
+print("原始数据标记后的结果：")
+print(rfq_df)
+
+if results:
+    print("\nSwitch Trade详细信息：")
+    print(merged_results[['switchTradeId', 'rfqId_buy', 'rfqId_sell', 
+                          'timestamp_buy', 'timestamp_sell', 
+                          'ticker_buy', 'ticker_sell']])
+else:
+    print("\n未发现符合条件的Switch Trade。")
