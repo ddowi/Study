@@ -1,0 +1,42 @@
+import pandas as pd
+import datashader as ds
+import datashader.transfer_functions as tf
+from datashader.colors import inferno
+from datashader.bokeh_ext import InteractiveImage
+from bokeh.plotting import figure
+from bokeh.embed import file_html
+from bokeh.resources import CDN
+import streamlit as st
+
+# 生成大数据集
+data = {
+    'time': pd.date_range('2023-01-01', periods=100000, freq='S'),
+    'value': range(100000),
+    'source': ['A'] * 25000 + ['B'] * 25000 + ['C'] * 25000 + ['D'] * 25000
+}
+df = pd.DataFrame(data)
+
+# 定义 Datashader 渲染函数
+def create_image(x_range, y_range, w, h):
+    cvs = ds.Canvas(plot_width=w, plot_height=h, x_range=x_range, y_range=y_range)
+    agg = cvs.line(df, x='time', y='value', agg=ds.sum('value'), line_width=2, by='source')
+    return tf.shade(agg, cmap=inferno, how='eq_hist')
+
+# 创建 Bokeh 图表
+p = figure(title="Datashader with Multiple Sources in Streamlit",
+           x_axis_label='Time',
+           y_axis_label='Value',
+           x_axis_type='datetime',
+           tools="pan,wheel_zoom,box_zoom,reset",
+           width=900, height=500)
+
+# 结合 Datashader 和 Bokeh 实现交互缩放
+interactive_plot = InteractiveImage(p, create_image)
+
+# 将 Bokeh 图表嵌入 Streamlit
+st.title("Datashader Visualization in Streamlit")
+st.markdown("### Interactively Explore Large Datasets with Multiple Sources")
+
+# 将 Bokeh 图表转换为 HTML 并展示
+html = file_html(interactive_plot, CDN, "Datashader Plot")
+st.components.v1.html(html, height=600, scrolling=True)
