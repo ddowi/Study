@@ -1,0 +1,56 @@
+import pandas as pd
+
+# 示例数据
+data = {
+    "time": ["2024-10-01 10:00:00", "2024-10-01 10:01:00"],
+    "side": ["buy", "sell"],
+    "executedPrice": [100, 105],
+    "executedSize": [50, 70],
+    "top1Price": [99, 106],
+    "top1Size": [10, 15],
+    "top2Price": [98, 107],
+    "top2Size": [20, 25],
+    "top3Price": [97, 108],
+    "top3Size": [15, 20],
+    "top4Price": [96, 109],
+    "top4Size": [5, 10],
+    "top5Price": [95, 110],
+    "top5Size": [10, 15],
+}
+df = pd.DataFrame(data)
+
+# 计算逐级消耗更好价格的 size
+def better_price_proportion(row):
+    remaining_size = row["executedSize"]  # 剩余未匹配的 size
+    better_size = 0  # 累计在更好价格下消耗的 size
+    
+    for i in range(1, 6):  # 遍历 top1 ~ top5
+        price = row[f"top{i}Price"]
+        size = row[f"top{i}Size"]
+        
+        # 判断是否为更好价格
+        if row["side"] == "buy" and price < row["executedPrice"]:
+            # 消耗当前 level 的 size
+            consume = min(size, remaining_size)
+            better_size += consume
+            remaining_size -= consume
+            
+        elif row["side"] == "sell" and price > row["executedPrice"]:
+            # 消耗当前 level 的 size
+            consume = min(size, remaining_size)
+            better_size += consume
+            remaining_size -= consume
+        
+        # 如果剩余 size 已经为 0，结束循环
+        if remaining_size <= 0:
+            break
+    
+    # 计算比例：在更好价格下消耗的 size / 执行的 executedSize
+    proportion = better_size / row["executedSize"]
+    return proportion
+
+# 应用函数
+df["betterPriceProportion"] = df.apply(better_price_proportion, axis=1)
+
+# 显示结果
+print(df[["time", "side", "executedPrice", "executedSize", "betterPriceProportion"]])
