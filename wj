@@ -1,0 +1,64 @@
+import pandas as pd
+
+# 示例数据
+trade_data = {
+    'startTime': ['2024-12-01 10:00:00', '2024-12-01 10:10:00'],
+    'endTime': ['2024-12-01 10:05:00', '2024-12-01 10:15:00'],
+    'side': ['Buy', 'Sell'],
+    'ticker': ['AAPL', 'MSFT']
+}
+market_data = {
+    'time': ['2024-12-01 10:00:00', '2024-12-01 10:03:00', '2024-12-01 10:10:00'],
+    'ticker': ['AAPL', 'AAPL', 'MSFT'],
+    'bestBid': [150, 149, 300],
+    'bidSize': [200, 250, 150],
+    'bestAsk': [151, 152, 301],
+    'askSize': [100, 120, 80]
+}
+
+trade_df = pd.DataFrame(trade_data)
+market_df = pd.DataFrame(market_data)
+
+# 转换时间为 datetime 格式
+trade_df['startTime'] = pd.to_datetime(trade_df['startTime'])
+trade_df['endTime'] = pd.to_datetime(trade_df['endTime'])
+market_df['time'] = pd.to_datetime(market_df['time'])
+
+# 初始化结果
+result = []
+
+# 遍历 trade_df 的每一行
+for _, trade_row in trade_df.iterrows():
+    ticker = trade_row['ticker']
+    start_time = trade_row['startTime']
+    end_time = trade_row['endTime']
+    
+    # 筛选 market data 中的时间范围和 ticker
+    market_slice = market_df[(market_df['ticker'] == ticker) & 
+                             (market_df['time'] >= start_time) & 
+                             (market_df['time'] <= end_time)]
+    
+    # 如果有匹配数据
+    if not market_slice.empty:
+        best_bid = market_slice['bestBid'].max()
+        bid_size = market_slice.loc[market_slice['bestBid'].idxmax(), 'bidSize']
+        best_ask = market_slice['bestAsk'].min()
+        ask_size = market_slice.loc[market_slice['bestAsk'].idxmin(), 'askSize']
+    else:
+        best_bid = bid_size = best_ask = ask_size = None
+    
+    # 添加到结果
+    result.append({
+        'startTime': start_time,
+        'endTime': end_time,
+        'side': trade_row['side'],
+        'ticker': ticker,
+        'bestBid': best_bid,
+        'bidSize': bid_size,
+        'bestAsk': best_ask,
+        'askSize': ask_size
+    })
+
+# 转换结果为 DataFrame
+result_df = pd.DataFrame(result)
+print(result_df)
