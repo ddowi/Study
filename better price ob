@@ -1,0 +1,104 @@
+def initialize_order_book(df, date):
+    """
+    初始化每日的 order book，包含 bid 和 ask 的前 5 个 levels。
+    """
+    daily_data = df[df["date"] == date]
+    order_book = {
+        "bid": {
+            f"level{level}": {
+                "price": list(daily_data[f"bid{level}Price"]),
+                "size": list(daily_data[f"bid{level}Size"])
+            } for level in range(1, 6)
+        },
+        "ask": {
+            f"level{level}": {
+                "price": list(daily_data[f"ask{level}Price"]),
+                "size": list(daily_data[f"ask{level}Size"])
+            } for level in range(1, 6)
+        }
+    }
+    return order_book
+
+def update_order_book(order_book, executed_size, executed_price, side):
+    """
+    根据交易情况更新 order book 中的流动性。
+    """
+    remaining_size = executed_size  # 剩余未完成的交易量
+    book_side = "ask" if side == "buy" else "bid"  # 买单消耗 ask，卖单消耗 bid
+
+    # 遍历指定 side 的价格 levels
+    for level in range(1, 6):
+        level_data = order_book[book_side][f"level{level}"]
+        level_price = level_data["price"][0]  # 当前 level 的价格
+        level_size = level_data["size"][0]    # 当前 level 的剩余 size
+
+        # 判断是否符合更优价格条件
+        if (side == "buy" and level_price < executed_price) or (side == "sell" and level_price > executed_price):
+            # 计算当前 level 可以成交的量
+            trade_at_this_level = min(level_size, remaining_size)
+            remaining_size -= trade_at_this_level
+            order_book[book_side][f"level{level}"]["size"][0] -= trade_at_this_level  # 更新剩余 size
+
+        # 如果全部成交完成，退出循环
+        if remaining_size <= 0:
+            break
+
+    # 移除已用完的价格和 size
+    for level in range(1, 6):
+        level_data = order_book[book_side][f"level{level}"]
+        if level_data["size"][0] == 0:  # 如果当前 level 的 size 消耗完
+            level_data["price"].pop(0)  # 移除第一个价格
+            level_data["size"].pop(0)   # 移除第一个 size
+
+
+def process_trades(df):
+    """
+    处理交易数据，按天初始化并更新 order book。
+    """
+    results = []
+    unique_dates = df["date"].unique()
+
+    for date in unique_dates:
+        # 初始化每日的 order book
+        order_book = initialize_order_book(df, date)
+        daily_data = df[df["date"] == date]
+
+        for _, trade in daily_data.iterrows():
+            side = trade["side"]
+            executed_price = trade["executedPrice"]
+            executed_size = trade["executedSize"]
+
+            # 更新 order book
+            update_order_book(order_book, executed_size, executed_price, side)
+
+            # 记录结果（可选择保存更新后的 order book 状态）
+            results.append({
+                "time": trade["time"],
+                "side": side,
+                "executedPrice": executed_price,
+                "executedSize": executed_size,
+                "order_book": order_book  # 可选择存储副本
+            })
+
+    return results
+
+
+# 假设原始数据 DataFrame
+df = pd.DataFrame({
+    "date": ["2024-12-20", "2024-12-20", "2024-12-21"],
+    "time": ["10:00:00", "10:01:00", "09:30:00"],
+    "side": ["buy", "sell", "buy"],
+    "executedPrice": [100, 105, 100],
+    "executedSize": [50, 40, 20],
+    "bid1Price": [98, 99, 96], "bid1Size": [40, 30, 15],
+    "bid2Price": [97, 98, 95], "bid2Size": [50, 40, 20],
+    "ask1Price": [101, 104, 101], "ask1Size": [30, 20, 10],
+    "ask2Price": [102, 105, 102], "ask2Size": [40, 50, 15],
+})
+
+# 处理交易并更新 order book
+results = process_trades(df)
+
+# 输出结果
+for result in results:
+    print(f"Time: {result['time']}, Side: {result['side']}, Updated Order Book: {result['order_book']}")
