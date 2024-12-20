@@ -1,0 +1,104 @@
+import pandas as pd
+
+# 示例数据
+data = {
+    "datetime": ["2024-10-01 10:00:00", "2024-10-01 10:01:00", "2024-10-01 10:02:00", "2024-10-01 10:03:00"],
+    "side": ["buy", "buy", "sell", "sell"],
+    "ticker": ["AAPL", "AAPL", "AAPL", "AAPL"],
+    "executedPrice": [100, 101, 105, 106],
+    "executedSize": [50, 30, 70, 40],
+    "top1Price": [99, 100, 106, 107],
+    "top1Size": [10, 15, 15, 20],
+    "top2Price": [98, 99, 107, 108],
+    "top2Size": [20, 25, 25, 30],
+    "top3Price": [97, 98, 108, 109],
+    "top3Size": [15, 20, 20, 25],
+    "top4Price": [96, 97, 109, 110],
+    "top4Size": [5, 10, 10, 15],
+    "top5Price": [95, 96, 110, 111],
+    "top5Size": [10, 15, 15, 10],
+}
+df = pd.DataFrame(data)
+df["datetime"] = pd.to_datetime(df["datetime"])
+
+# 初始化 Order Book (逐层结构)
+def initialize_order_books(df):
+    order_books = {}
+    for ticker in df["ticker"].unique():
+        order_books[ticker] = [
+            {"level": i, "price": df.loc[df["ticker"] == ticker, f"top{i}Price"].iloc[0],
+             "size": df.loc[df["ticker"] == ticker, f"top{i}Size"].iloc[0]}
+            for i in range(1, 6)
+        ]
+    return order_books
+
+# 动态消耗流动性
+def process_orders(row, order_books):
+    ticker = row["ticker"]
+    side = row["side"]
+    executed_price = row["executedPrice"]
+    executed_size = row["executedSize"]
+    
+    remaining_size = executed_size  # 剩余未匹配的 size
+    better_size = 0  # 累计更好价格下消耗的 size
+    executed_part_size = 0  # 实际执行掉的部分 size
+
+    # 保存当前时刻的 Order Book 信息
+    current_order_book = [{"level": level["level"], "price": level["price"], "size": level["size"]} for level in order_books[ticker]]
+
+    # 遍历 Order Book 的每个 level
+    for level in order_books[ticker]:
+        price, size = level["price"], level["size"]
+
+        # 跳过 NA 值或 size 为 0 的 level
+        if pd.isna(price) or pd.isna(size) or size <= 0:
+            continue
+
+        # 判断更好价格
+        if side == "buy" and price < executed_price:
+            consume = min(size, remaining_size)
+            better_size += consume
+            executed_part_size += consume
+            remaining_size -= consume
+            level["size"] -= consume  # 更新该 level 的 size
+            
+        elif side == "sell" and price > executed_price:
+            consume = min(size, remaining_size)
+            better_size += consume
+            executed_part_size += consume
+            remaining_size -= consume
+            level["size"] -= consume  # 更新该 level 的 size
+        
+        # 如果剩余 size 已为 0，结束循环
+        if remaining_size <= 0:
+            break
+
+    # 计算比例：在更好价格下消耗的 size / 执行的 executedSize
+    proportion = better_size / executed_size
+    not_fully_matched = remaining_size > 0
+    return proportion, not_fully_matched, executed_part_size, current_order_book
+
+# 主逻辑：逐笔处理
+order_books = initialize_order_books(df)
+results = []
+
+for _, row in df.iterrows():
+    proportion, not_fully_matched, executed_part_size, current_order_book = process_orders(row, order_books)
+    results.append({
+        "datetime": row["datetime"],
+        "side": row["side"],
+        "ticker": row["ticker"],
+        "executedPrice": row["executedPrice"],
+        "executedSize": row["executedSize"],
+        "betterPriceProportion": proportion,
+        "notFullyMatched": not_fully_matched,
+        "executedPartSize": executed_part_size,
+        "currentOrderBook": current_order_book  # 保存当前时刻的 Order Book
+    })
+
+# 转换结果为 DataFrame
+result_df = pd.DataFrame(results)
+
+# 显示结果
+pd.set_option("max_colwidth", None)
+print(result_df[["datetime", "ticker", "executedPrice", "executedSize", "betterPriceProportion", "currentOrderBook"]])
