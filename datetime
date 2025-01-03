@@ -16,6 +16,21 @@ def convert_datetime(value, date_format):
         return value.strftime(date_format)
     elif isinstance(value, str):
         # Convert str to datetime
-        return datetime.strptime(value, date_format)
+        try:
+            return datetime.strptime(value, date_format)
+        except ValueError:
+            raise ValueError(f"The string does not match the format {date_format}.")
     else:
         raise TypeError("Input value must be either a str or a datetime object.")
+
+# Example usage:
+if __name__ == "__main__":
+    # Convert datetime to str
+    dt = datetime.now()
+    dt_str = convert_datetime(dt, "%Y-%m-%d")
+    print(f"Datetime to string: {dt_str}")
+
+    # Convert str to datetime
+    str_date = "2025-01-03"
+    dt_obj = convert_datetime(str_date, "%Y-%m-%d")
+    print(f"String to datetime: {dt_obj}")
