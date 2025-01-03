@@ -1,0 +1,21 @@
+from datetime import datetime
+
+def convert_datetime(value, date_format):
+    """
+    Convert a value between str and datetime based on its type.
+
+    Args:
+        value (str | datetime): The value to be converted.
+        date_format (str): The format to convert to (if datetime) or parse from (if str).
+
+    Returns:
+        str | datetime: The converted value.
+    """
+    if isinstance(value, datetime):
+        # Convert datetime to str
+        return value.strftime(date_format)
+    elif isinstance(value, str):
+        # Convert str to datetime
+        return datetime.strptime(value, date_format)
+    else:
+        raise TypeError("Input value must be either a str or a datetime object.")
