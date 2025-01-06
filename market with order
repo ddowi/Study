@@ -1,0 +1,70 @@
+import plotly.graph_objects as go
+import pandas as pd
+
+def plot_market_with_orders(market_data, order_data):
+    """
+    生成显示bid0, ask0以及买卖订单的交互式图表，并在hover时显示imbalance信息。
+    
+    参数:
+    - market_data: 包含时间、bid0和ask0的DataFrame。
+    - order_data: 包含时间、side（买卖）、价格、数量的DataFrame。
+    """
+    # 计算imbalance，假设买单的imb为正，卖单的imb为负
+    order_data['imb'] = order_data['quantity'] * (1 if order_data['side'] == 'buy' else -1)
+
+    # 创建交互式图表
+    fig = go.Figure()
+
+    # 添加 bid0 和 ask0 线
+    fig.add_trace(go.Scatter(x=market_data['time'], y=market_data['bid0'],
+                            mode='lines', name='Bid0', line=dict(color='blue')))
+    fig.add_trace(go.Scatter(x=market_data['time'], y=market_data['ask0'],
+                            mode='lines', name='Ask0', line=dict(color='red')))
+    
+    # 分离买单和卖单
+    buy_orders = order_data[order_data['side'] == 'buy']
+    sell_orders = order_data[order_data['side'] == 'sell']
+    
+    # 添加买单标记并显示imbalance
+    fig.add_trace(go.Scatter(x=buy_orders['time'], y=buy_orders['price'],
+                             mode='markers', name='Buy Orders',
+                             marker=dict(color='green', size=10),
+                             hovertemplate=
+                             'Time: %{x}<br>Price: %{y}<br>Imbalance: %{customdata[0]}<br>' +
+                             'Quantity: %{marker.size}<extra></extra>',
+                             customdata=buy_orders[['imb']].values))
+    
+    # 添加卖单标记并显示imbalance
+    fig.add_trace(go.Scatter(x=sell_orders['time'], y=sell_orders['price'],
+                             mode='markers', name='Sell Orders',
+                             marker=dict(color='orange', size=10),
+                             hovertemplate=
+                             'Time: %{x}<br>Price: %{y}<br>Imbalance: %{customdata[0]}<br>' +
+                             'Quantity: %{marker.size}<extra></extra>',
+                             customdata=sell_orders[['imb']].values))
+
+    # 设置图表的标题和轴标签
+    fig.update_layout(title='Market Data with Orders',
+                      xaxis_title='Time',
+                      yaxis_title='Price',
+                      xaxis_rangeslider_visible=False)
+    
+    # 显示图表
+    fig.show()
+
+# 示例使用
+market_data = pd.DataFrame({
+    'time': ['2024-01-01 09:00', '2024-01-01 09:01', '2024-01-01 09:02'],
+    'bid0': [100, 101, 102],
+    'ask0': [103, 104, 105]
+})
+
+order_data = pd.DataFrame({
+    'time': ['2024-01-01 09:00', '2024-01-01 09:01', '2024-01-01 09:02'],
+    'side': ['buy', 'sell', 'buy'],
+    'price': [100, 104, 101],
+    'quantity': [10, 5, 15]
+})
+
+# 调用函数生成图表
+plot_market_with_orders(market_data, order_data)
