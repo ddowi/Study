@@ -1,0 +1,55 @@
+def execute_order(order_row, ob_row):
+    """
+    根据订单的 side 和 order book 行数据，计算完成 notionalSize 所需的资金。
+
+    参数:
+        order_row (dict): 包含订单信息的行数据，必须有 'side' 和 'notionalSize'。
+        ob_row (dict): 包含 order book 数据的行，必须有 'ask0', 'askSize0', ..., 'bid0', 'bidSize0'。
+
+    返回:
+        total_cost (float): 完成订单所需的总资金。
+    """
+    # 提取订单信息
+    side = order_row['side'].lower()  # 订单方向 ('buy' or 'sell')
+    notional_size = order_row['notionalSize']  # 需要完成的数量
+
+    # 初始化变量
+    total_cost = 0  # 总花费
+    remaining_size = notional_size  # 剩余未完成的数量
+
+    # 根据 side 确定使用 ask 或 bid 逐级执行
+    if side == 'sell':  # 如果订单是卖出，需以 ask 执行（buy aggressively）
+        for level in range(6):  # 假设有 0 到 5 个 ask level
+            ask_price = ob_row[f'ask{level}']  # 当前 level 的 ask 价格
+            ask_size = ob_row[f'askSize{level}']  # 当前 level 的 ask 数量
+
+            if remaining_size <= ask_size:
+                # 当前 level 足够完成订单
+                total_cost += remaining_size * ask_price
+                remaining_size = 0
+                break
+            else:
+                # 当前 level 不足，先用完该 level，继续下一级
+                total_cost += ask_size * ask_price
+                remaining_size -= ask_size
+
+    elif side == 'buy':  # 如果订单是买入，需以 bid 执行（sell aggressively）
+        for level in range(6):  # 假设有 0 到 5 个 bid level
+            bid_price = ob_row[f'bid{level}']  # 当前 level 的 bid 价格
+            bid_size = ob_row[f'bidSize{level}']  # 当前 level 的 bid 数量
+
+            if remaining_size <= bid_size:
+                # 当前 level 足够完成订单
+                total_cost += remaining_size * bid_price
+                remaining_size = 0
+                break
+            else:
+                # 当前 level 不足，先用完该 level，继续下一级
+                total_cost += bid_size * bid_price
+                remaining_size -= bid_size
+
+    # 如果所有 level 执行完，仍未完成订单，抛出警告
+    if remaining_size > 0:
+        print(f"Warning: Not enough liquidity to complete the order. Unfilled size: {remaining_size}")
+
+    return total_cost
