@@ -1,0 +1,4 @@
+def color_word(paragraph, word, color):
+    return paragraph.replace(f"{{{word}}}", f'<span style="color:{color};">{word}</span>')
+
+st.markdown(paragraph, unsafe_allow_html=True)
