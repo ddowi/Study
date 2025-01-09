@@ -1,4 +1,17 @@
+import streamlit as st
+
+# Your paragraph with placeholders for colorful words
+paragraph = """
+Streamlit is a powerful tool for building interactive web apps.
+It allows you to create {data apps} with ease and style.
+"""
+
+# Define a function to color words
 def color_word(paragraph, word, color):
     return paragraph.replace(f"{{{word}}}", f'<span style="color:{color};">{word}</span>')
 
+# Apply colors to specific words
+paragraph = color_word(paragraph, "data apps", "blue")
+
+# Display the paragraph with colored words
 st.markdown(paragraph, unsafe_allow_html=True)
