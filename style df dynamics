@@ -1,0 +1,20 @@
+def format_dynamic(value):
+    # Handle lists: join list elements as strings separated by commas
+    if isinstance(value, list):
+        return ", ".join(map(str, value))
+    
+    # Handle floats: Check decimal precision
+    if isinstance(value, float):
+        str_val = f"{value:.10g}"  # Avoid scientific notation
+        if "." in str_val:
+            decimals = len(str_val.split(".")[1])  # Count decimal places
+            if decimals > 4:
+                return f"{value:.4f}"  # Format to 4 decimal places
+    return value  # Leave as is for integers or floats with few decimals
+
+# Apply custom formatting
+styled_df = df.style.format(format_dynamic)
+
+# Display in Streamlit
+st.dataframe(df)  # Display raw DataFrame for comparison
+st.write(styled_df.to_html(), unsafe_allow_html=True)  # Display styled DataFrame
