@@ -1,16 +1,25 @@
 def format_dynamic(value):
-    # Handle lists: join list elements as strings separated by commas
-    if isinstance(value, list):
-        return ", ".join(map(str, value))
+    # 处理缺失值 (NaN 或 None)
+    if pd.isnull(value):
+        return "N/A"
     
-    # Handle floats: Check decimal precision
-    if isinstance(value, float):
-        str_val = f"{value:.10g}"  # Avoid scientific notation
+    # 处理列表
+    if isinstance(value, list):
+        # 格式化列表中的每个元素，处理浮点数和缺失值
+        formatted_list = [
+            format_dynamic(v) if not pd.isnull(v) else "N/A" for v in value
+        ]
+        return ", ".join(map(str, formatted_list))  # 以逗号分隔的字符串
+    
+    # 处理 numpy.float64 或 float 类型
+    if isinstance(value, (np.floating, float)):
+        str_val = f"{value:.10g}"  # 避免科学计数法
         if "." in str_val:
-            decimals = len(str_val.split(".")[1])  # Count decimal places
+            decimals = len(str_val.split(".")[1])  # 检查小数位数
             if decimals > 4:
-                return f"{value:.4f}"  # Format to 4 decimal places
-    return value  # Leave as is for integers or floats with few decimals
+                return f"{value:.4f}"  # 格式化为保留4位小数
+    return value  # 其他值直接返回
+
 
 # Apply custom formatting
 styled_df = df.style.format(format_dynamic)
