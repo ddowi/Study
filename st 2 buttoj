@@ -1,42 +1,63 @@
 import streamlit as st
 
-# Sidebar form for inputs
+# Initialize session state for group inputs
+if "group_a_inputs" not in st.session_state:
+    st.session_state["group_a_inputs"] = {}
+if "group_b_inputs" not in st.session_state:
+    st.session_state["group_b_inputs"] = {}
+
+# Sidebar form
 with st.sidebar.form("input_form"):
+    # Dynamic input1 selection
+    st.header("Dynamic Input Control")
+    input1 = st.selectbox("Input 1 (0 or 1)", [0, 1], index=0)
+
     # Group A inputs
     st.header("Group A Inputs (Shared)")
-    input1 = st.text_input("Input 1 (for both charts)")
-    input2 = st.text_input("Input 2 (for both charts)")
-    input3 = st.text_input("Input 3 (for both charts)")
+    input2 = st.text_input("Input 2")
+    input3 = st.text_input("Input 3")
+    if input1 == 0:
+        input4 = st.text_input("Input 4 (only when Input 1 is 0)")
+    else:
+        input4 = None  # No input4 when input1 == 1
 
     # Group B inputs
-    st.header("Group B Inputs (For Second Chart)")
-    input4 = st.text_input("Input 4")
+    st.header("Group B Inputs")
     input5 = st.text_input("Input 5")
     input6 = st.text_input("Input 6")
-    input7 = st.text_input("Input 7")
-    input8 = st.text_input("Input 8")
+    if input1 == 0:
+        input7 = st.text_input("Input 7 (only when Input 1 is 0)")
+        input8 = st.text_input("Input 8 (only when Input 1 is 0)")
+    else:
+        input7, input8 = None, None  # No input7 and input8 when input1 == 1
 
-    # Buttons to apply inputs
-    group_a_button = st.form_submit_button("Apply Group A (Generate Chart 1)")
-    group_b_button = st.form_submit_button("Apply Group B (Generate Chart 2)")
+    # Apply buttons
+    group_a_button = st.form_submit_button("Apply Group A")
+    group_b_button = st.form_submit_button("Apply Group B")
 
-# Ensure shared state is initialized
-if "group_a_inputs" not in st.session_state:
-    st.session_state["group_a_inputs"] = None
-
-# Handle Group A button click
+# Handle Group A submission
 if group_a_button:
-    st.session_state["group_a_inputs"] = {"input1": input1, "input2": input2, "input3": input3}
+    st.session_state["group_a_inputs"] = {
+        "input2": input2,
+        "input3": input3,
+        "input4": input4,  # May be None if input1 == 1
+    }
     st.success("Group A Inputs Applied!")
-    st.write("Chart 1 Inputs:", st.session_state["group_a_inputs"])
+    st.write("Group A Inputs:", st.session_state["group_a_inputs"])
     st.line_chart([1, 2, 3])  # Placeholder for Chart 1
 
-# Handle Group B button click
+# Handle Group B submission
 if group_b_button:
-    if st.session_state["group_a_inputs"] is None:
+    if not st.session_state["group_a_inputs"]:
         st.error("Please apply Group A inputs first!")
     else:
+        st.session_state["group_b_inputs"] = {
+            "input5": input5,
+            "input6": input6,
+            "input7": input7,  # May be None if input1 == 1
+            "input8": input8,  # May be None if input1 == 1
+        }
         st.success("Group B Inputs Applied!")
         st.write("Group A Inputs:", st.session_state["group_a_inputs"])
-        st.write("Group B Inputs:", {"input4": input4, "input5": input5, "input6": input6, "input7": input7, "input8": input8})
+        st.write("Group B Inputs:", st.session_state["group_b_inputs"])
         st.line_chart([3, 2, 1])  # Placeholder for Chart 2
