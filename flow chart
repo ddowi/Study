@@ -1,5 +1,31 @@
 import plotly.graph_objects as go
 <span style='line-height:1.2;'>
+
+# Add edges as annotations with arrows
+for start, end, label in edges:
+    x0, y0 = node_positions[start]
+    x1, y1 = node_positions[end]
+    fig.add_trace(go.Scatter(
+        x=[x0, x1],
+        y=[y0, y1],
+        mode="lines",
+        line=dict(width=2, color="gray"),
+        hoverinfo="none"
+    ))
+    # Add an arrow annotation
+    fig.add_annotation(
+        x=x1, y=y1,
+        ax=x0, ay=y0,
+        xref="x", yref="y",
+        axref="x", ayref="y",
+        showarrow=True,
+        arrowhead=2,
+        arrowsize=1,
+        arrowwidth=2,
+        arrowcolor="gray"
+    )
+
+
 # Define nodes and edges for the flowchart
 nodes = ["Passive", "Aggress", "Win", "Tied", "Loss"]
 edges = [
