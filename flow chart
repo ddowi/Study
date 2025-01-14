@@ -13,11 +13,11 @@ edges = [
 
 # Define positions for the nodes
 node_positions = {
-    "Passive": (-1, 0.5),
-    "Aggress": (-1, -0.5),
-    "Win": (1, 1),
+    "Passive": (-1, 0.7),
+    "Aggress": (-1, -0.7),
+    "Win": (1, 1.5),
     "Tied": (1, 0),
-    "Loss": (1, -1)
+    "Loss": (1, -1.5)
 }
 
 # Create nodes for the flowchart
@@ -73,7 +73,8 @@ fig.update_layout(
     xaxis=dict(visible=False),
     yaxis=dict(visible=False),
     margin=dict(l=50, r=50, t=50, b=50),
-    plot_bgcolor="white"
+    plot_bgcolor="white",
+    height=800  # Make the chart taller
 )
 
 fig.show()
