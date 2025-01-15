@@ -1,6 +1,99 @@
 import plotly.graph_objects as go
 <span style='line-height:1.2;'>
 
+import plotly.graph_objects as go
+
+# Define nodes and edges for the flowchart
+nodes = ["Passive", "Aggress", "Win", "Tied", "Loss"]
+edges = [
+    ("Passive", "Win", "Market moves in favor or does not move but gets passively filled"),
+    ("Passive", "Tied", "Market moves against us but comes back later"),
+    ("Passive", "Loss", "Market moves against us and does not come back"),
+    ("Aggress", "Win", "Intercept at deep level and aggress at top level"),
+    ("Aggress", "Tied", "Market does not move, PA instructs to aggress"),
+    ("Aggress", "Loss", "Market moves against us; aggress due to timeout or PA")
+]
+
+# Define positions for the nodes
+node_positions = {
+    "Passive": (-1, 2),
+    "Aggress": (-1, -2),
+    "Win": (1, 3),
+    "Tied": (1, 0),
+    "Loss": (1, -3)
+}
+
+# Create nodes for the flowchart
+node_x = [node_positions[node][0] for node in nodes]
+node_y = [node_positions[node][1] for node in nodes]
+
+# Add edges with explanations as annotations
+edge_x = []
+edge_y = []
+annotations = []
+for start, end, label in edges:
+    x0, y0 = node_positions[start]
+    x1, y1 = node_positions[end]
+    edge_x.extend([x0, x1, None])
+    edge_y.extend([y0, y1, None])
+    annotations.append(dict(
+        x=(x0 + x1) / 2,
+        y=(y0 + y1) / 2,
+        text=label,
+        showarrow=False,
+        font=dict(size=14, color="darkgreen"),
+        align="center"
+    ))
+
+# Create the figure
+fig = go.Figure()
+
+# Add edges as arrows without intersecting the nodes
+for start, end, label in edges:
+    x0, y0 = node_positions[start]
+    x1, y1 = node_positions[end]
+    mid_x = (x0 + x1) / 2
+    mid_y = (y0 + y1) / 2
+    fig.add_trace(go.Scatter(
+        x=[x0, mid_x, x1], y=[y0, mid_y + 0.2, y1],
+        mode="lines",
+        line=dict(width=2, color="gray", dash="solid"),
+        hoverinfo="none"
+    ))
+    fig.add_trace(go.Scatter(
+        x=[x1], y=[y1],
+        mode="markers",
+        marker=dict(size=10, color="gray", symbol="triangle-up"),
+        hoverinfo="none"
+    ))
+
+# Add nodes
+fig.add_trace(go.Scatter(
+    x=node_x, y=node_y,
+    mode="markers+text",
+    marker=dict(size=50, color="red"),
+    text=nodes,
+    textfont=dict(size=18, color="white"),
+    textposition="middle center",
+    hoverinfo="text"
+))
+
+# Add annotations for edge labels
+fig.update_layout(
+    annotations=annotations,
+    title="Flowchart: Passive and Aggress to Win, Tied, or Loss",
+    title_font_size=20,
+    showlegend=False,
+    xaxis=dict(visible=False),
+    yaxis=dict(visible=False),
+    margin=dict(l=50, r=50, t=50, b=50),
+    plot_bgcolor="white",
+    height=1000  # Make the chart taller
+)
+
+fig.show()
+
+
 for start, end, label in edges:
     x0, y0 = node_positions[start]
     x1, y1 = node_positions[end]
