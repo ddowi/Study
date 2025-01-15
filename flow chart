@@ -1,6 +1,19 @@
 import plotly.graph_objects as go
 <span style='line-height:1.2;'>
 
+for start, end, label in edges:
+    x0, y0 = node_positions[start]
+    x1, y1 = node_positions[end]
+    fig.add_trace(go.Scatter(
+        x=[x0, x1], y=[y0, y1],
+        mode="lines+text",
+        line=dict(width=2, color="gray"),
+        marker=dict(size=5),
+        text=[None, label],
+        textposition="top center",
+        hoverinfo="text"
+    ))
+
 # Add edges as annotations with arrows
 for start, end, label in edges:
     x0, y0 = node_positions[start]
