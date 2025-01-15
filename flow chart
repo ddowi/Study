@@ -1,6 +1,17 @@
 import plotly.graph_objects as go
 <span style='line-height:1.2;'>
 
+for _, row in df.iterrows():
+    fig.add_trace(go.Scatter(
+        x=[row['x']],  # 每个点单独绘制
+        y=[row['y']],
+        mode='markers',
+        marker=dict(size=10),
+        name=row['info'],  # 以 info 列作为点的名称
+        hovertemplate=f"{row['info']}<br>x: {row['x']}<br>y: {row['y']}<extra></extra>"
+    ))
+
+
 import plotly.graph_objects as go
 
 # Define nodes and edges for the flowchart
