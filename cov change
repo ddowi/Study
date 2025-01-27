@@ -1,0 +1,55 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+
+# Example covariance matrices
+# Simulated old and new covariance matrices (replace with your actual data)
+np.random.seed(42)
+n_columns = 5
+C_old = np.random.rand(n_columns, n_columns)
+C_old = (C_old + C_old.T) / 2  # Make it symmetric
+np.fill_diagonal(C_old, np.random.rand(n_columns))  # Set variances
+
+C_new = C_old + np.random.normal(scale=0.05, size=(n_columns, n_columns))
+C_new = (C_new + C_new.T) / 2  # Keep symmetric
+np.fill_diagonal(C_new, np.diag(C_new) + np.random.normal(scale=0.1, size=n_columns))
+
+# Calculate changes
+delta_C = C_new - C_old
+
+# Variance changes (diagonal elements)
+variance_changes = np.diag(C_new) - np.diag(C_old)
+
+# Off-diagonal changes (interaction changes)
+interaction_changes = np.sum(np.abs(delta_C), axis=0) - np.abs(variance_changes)
+
+# Total changes
+total_changes = np.abs(variance_changes) + interaction_changes
+
+# Normalize contributions
+normalized_contributions = total_changes / total_changes.sum()
+
+# Create a DataFrame for visualization
+columns = [f"Col{i+1}" for i in range(n_columns)]
+data = pd.DataFrame({
+    "Variance Change": variance_changes,
+    "Interaction Change": interaction_changes,
+    "Total Change": total_changes,
+    "Normalized Contribution": normalized_contributions
+}, index=columns)
+
+# Plot results
+plt.figure(figsize=(10, 6))
+plt.bar(columns, normalized_contributions, alpha=0.7, label="Normalized Contribution")
+plt.xlabel("Columns")
+plt.ylabel("Normalized Contribution")
+plt.title("Column-wise Contribution to Covariance Matrix Change")
+plt.xticks(rotation=45)
+plt.legend()
+plt.grid(axis='y', linestyle='--', alpha=0.7)
+plt.tight_layout()
+
+# Display the DataFrame to the user
+import ace_tools as tools; tools.display_dataframe_to_user(name="Covariance Matrix Column Contribution Analysis", dataframe=data)
+
+plt.show()
