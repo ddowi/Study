@@ -53,3 +53,49 @@ plt.tight_layout()
 import ace_tools as tools; tools.display_dataframe_to_user(name="Covariance Matrix Column Contribution Analysis", dataframe=data)
 
 plt.show()
+
+
+
+
+
+# Simulated weight vector
+weights = np.random.rand(n_columns)
+weights = weights / weights.sum()  # Normalize weights
+
+# Calculate weighted variance change
+delta_V = weights.T @ delta_C @ weights
+
+# Analyze contribution from each column
+column_contributions = np.zeros(n_columns)
+for j in range(n_columns):
+    # Isolate the effect of column j
+    delta_C_col = np.zeros_like(delta_C)
+    delta_C_col[:, j] = delta_C[:, j]  # Keep only column j
+    delta_C_col[j, :] = delta_C[j, :]  # Symmetry for covariance matrix
+    column_contributions[j] = weights.T @ delta_C_col @ weights
+
+# Normalize contributions
+normalized_col_contributions = column_contributions / column_contributions.sum()
+
+# Create a DataFrame for visualization
+contribution_data = pd.DataFrame({
+    "Column Contribution": column_contributions,
+    "Normalized Contribution": normalized_col_contributions
+}, index=columns)
+
+# Plot contributions
+plt.figure(figsize=(10, 6))
+plt.bar(columns, normalized_col_contributions, alpha=0.7, label="Normalized Contribution")
+plt.xlabel("Columns")
+plt.ylabel("Normalized Contribution")
+plt.title("Column-wise Contribution to Variance Change")
+plt.xticks(rotation=45)
+plt.legend()
+plt.grid(axis='y', linestyle='--', alpha=0.7)
+plt.tight_layout()
+
+# Display the DataFrame to the user
+tools.display_dataframe_to_user(name="Column Contribution to Variance Change", dataframe=contribution_data)
+
+plt.show()
+
