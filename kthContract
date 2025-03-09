@@ -1,0 +1,28 @@
+import pandas as pd
+
+def assign_kth_contract(df):
+    """
+    Assign kthContract based on adjMonth, which represents the month before the future delivers.
+    """
+    df['adjMonth'] = pd.to_datetime(df['adjMonth'], format='%Y-%m')
+    
+    # Sort by trade date and adjMonth to rank contracts in delivery sequence
+    df = df.sort_values(['date', 'adjMonth'])
+    
+    # Assign kthContract per date
+    df['kthContract'] = df.groupby('date')['adjMonth'].rank(method='dense').astype(int)
+    
+    return df
+
+# Example DataFrame
+data = {
+    'date': ['2024-10-01', '2024-10-01', '2024-10-01', '2024-10-02', '2024-10-02'],
+    'futureTicker': ['ERZ4', 'ERH5', 'ERM5', 'ERU5', 'ERZ5'],
+    'adjMonth': ['2024-11', '2025-02', '2025-05', '2025-08', '2025-11']
+}
+
+df = pd.DataFrame(data)
+df['date'] = pd.to_datetime(df['date'])
+
+df = assign_kth_contract(df)
+print(df)
