@@ -1,28 +1,32 @@
 import pandas as pd
 
-def assign_kth_contract(df):
-    """
-    Assign kthContract based on adjMonth, which represents the month before the future delivers.
-    """
-    df['adjMonth'] = pd.to_datetime(df['adjMonth'], format='%Y-%m')
-    
-    # Sort by trade date and adjMonth to rank contracts in delivery sequence
-    df = df.sort_values(['date', 'adjMonth'])
-    
-    # Assign kthContract per date
-    df['kthContract'] = df.groupby('date')['adjMonth'].rank(method='dense').astype(int)
-    
-    return df
-
-# Example DataFrame
+# Sample data
 data = {
-    'date': ['2024-10-01', '2024-10-01', '2024-10-01', '2024-10-02', '2024-10-02'],
-    'futureTicker': ['ERZ4', 'ERH5', 'ERM5', 'ERU5', 'ERZ5'],
-    'adjMonth': ['2024-11', '2025-02', '2025-05', '2025-08', '2025-11']
+    'date': ['2024-10-15', '2024-12-10', '2025-02-10', '2025-05-20', '2025-08-10', '2025-11-05'],
+    'futureTicker': ['ERZ4', 'ERH5', 'ERM5', 'ERU5', 'ERZ5', 'ERH6'],
+    'adjMonth': ['2024-11', '2024-12', '2025-01', '2025-04', '2025-07', '2025-10']
 }
 
 df = pd.DataFrame(data)
 df['date'] = pd.to_datetime(df['date'])
+df['adjMonth'] = pd.to_datetime(df['adjMonth'])
 
-df = assign_kth_contract(df)
-print(df)
+# Define contract delivery months
+delivery_order = {'H': 3, 'M': 6, 'U': 9, 'Z': 12}
+
+# Extract year and month from `adjMonth`
+df['adjYear'] = df['adjMonth'].dt.year
+df['adjMonthNum'] = df['adjMonth'].dt.month
+
+# Extract year and delivery month from `futureTicker`
+df['contractYear'] = 2000 + df['futureTicker'].str[-2:].astype(int)
+df['contractMonth'] = df['futureTicker'].str[-3].map(delivery_order)
+
+# Compute the difference in time between contract delivery and `adjMonth`
+df['monthsToDelivery'] = (df['contractYear'] - df['adjYear']) * 12 + (df['contractMonth'] - df['adjMonthNum'])
+
+# Assign `kthContract` by ranking contracts in ascending order of `monthsToDelivery`
+df['kthContract'] = df.groupby('date')['monthsToDelivery'].rank(method='dense').astype(int)
+
+import ace_tools as tools
+tools.display_dataframe_to_user(name="Trade Data with kthContract", dataframe=df)
