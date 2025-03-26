@@ -1,0 +1,20 @@
+import pandas as pd
+
+# Step 1: 构造 OB 和 trade 的 DataFrame（略，见上）
+
+# Step 2: 排序
+ob_df = ob_df.sort_values('streamTime').reset_index(drop=True)
+trade_df = trade_df.sort_values('streamTime').reset_index(drop=True)
+
+# Step 3: 给 ob_df 加上 prev_time 作为区间左边界
+ob_df['prev_streamTime'] = ob_df['streamTime'].shift(1)
+ob_df.loc[0, 'prev_streamTime'] = ob_df.loc[0, 'streamTime'] - pd.Timedelta('1us')
+
+# Step 4: 对每一行 OB，收集 trade 在其区间内的 trades
+def collect_trades(row):
+    t0 = row['prev_streamTime']
+    t1 = row['streamTime']
+    sub_trades = trade_df[(trade_df['streamTime'] > t0) & (trade_df['streamTime'] <= t1)]
+    return sub_trades[['price', 'size']].to_dict('records')
+
+ob_df['trades'] = ob_df.apply(collect_trades, axis=1)
