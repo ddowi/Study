@@ -18,3 +18,65 @@ def collect_trades(row):
     return sub_trades[['price', 'size']].to_dict('records')
 
 ob_df['trades'] = ob_df.apply(collect_trades, axis=1)
+
+
+import pandas as pd
+import numpy as np
+
+def compute_optimal_order_size_full(lambda_rate, mu_rate, delta_rate, expected_executed, max_z=100):
+    """
+    Compute optimal N* using full Aldridge formula with geometric queue distribution.
+    """
+    rho = lambda_rate / (mu_rate + delta_rate)
+    if rho >= 1:
+        raise ValueError("Unstable queue: lambda must be less than mu + delta")
+
+    inner_geom_sum = rho / (1 - rho)
+    A = sum(z * (1 / (1 + inner_geom_sum)) * (rho ** z) for z in range(1, max_z + 1))
+    N_star = 0.5 * (expected_executed + np.sqrt(expected_executed**2 + 4 * expected_executed * A))
+    return N_star, lambda_rate, mu_rate, delta_rate
+
+def infer_trade_side(row):
+    if pd.notna(row.get('side')):
+        return row['side']
+    if pd.notna(row.get('bid0')) and pd.notna(row.get('ask0')):
+        mid = (row['bid0'] + row['ask0']) / 2
+        return 'buy' if row['price'] >= mid else 'sell'
+    return None
+
+def calculate_N_star_from_data(orderbook_df, trade_df, current_time, side='buy', N_target=100, window_minutes=5):
+    """
+    Calculate optimal order size N* using orderbook and trade data.
+    """
+    window_start = current_time - pd.Timedelta(minutes=window_minutes)
+    window_seconds = window_minutes * 60
+
+    ob = orderbook_df[(orderbook_df['streamTime'] >= window_start) & (orderbook_df['streamTime'] <= current_time)].copy()
+    tr = trade_df[(trade_df['streamTime'] >= window_start) & (trade_df['streamTime'] <= current_time)].copy()
+
+    ob = ob.sort_values('streamTime')
+    size_col = 'bidSize0' if side == 'buy' else 'askSize0'
+    price_col = 'bid0' if side == 'buy' else 'ask0'
+
+    size_diff = ob[size_col].diff()
+    price_diff = ob[price_col].diff()
+
+    lambda_volume = size_diff[(size_diff > 0) | (price_diff > 0)].sum()
+    delta_volume = -size_diff[(size_diff < 0) | (price_diff < 0)].sum()
+    lambda_rate = lambda_volume / window_seconds
+    delta_rate = delta_volume / window_seconds
+
+    latest_quotes = ob[['streamTime', 'bid0', 'ask0']].set_index('streamTime')
+    tr = tr.set_index('streamTime').join(latest_quotes, how='left').reset_index()
+    tr['inferred_side'] = tr.apply(infer_trade_side, axis=1)
+    opposing_side = 'sell' if side == 'buy' else 'buy'
+    mu_volume = tr.loc[tr['inferred_side'] == opposing_side, 'size'].sum()
+    mu_rate = mu_volume / window_seconds
+
+    N_star, lambda_out, mu_out, delta_out = compute_optimal_order_size_full(lambda_rate, mu_rate, delta_rate, N_target)
+    return {
+        'N_star': N_star,
+        'lambda': lambda_out,
+        'mu': mu_out,
+        'delta': delta_out
+    }
