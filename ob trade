@@ -1,82 +1,71 @@
-import pandas as pd
-
-# Step 1: 构造 OB 和 trade 的 DataFrame（略，见上）
-
-# Step 2: 排序
-ob_df = ob_df.sort_values('streamTime').reset_index(drop=True)
-trade_df = trade_df.sort_values('streamTime').reset_index(drop=True)
-
-# Step 3: 给 ob_df 加上 prev_time 作为区间左边界
-ob_df['prev_streamTime'] = ob_df['streamTime'].shift(1)
-ob_df.loc[0, 'prev_streamTime'] = ob_df.loc[0, 'streamTime'] - pd.Timedelta('1us')
-
-# Step 4: 对每一行 OB，收集 trade 在其区间内的 trades
-def collect_trades(row):
-    t0 = row['prev_streamTime']
-    t1 = row['streamTime']
-    sub_trades = trade_df[(trade_df['streamTime'] > t0) & (trade_df['streamTime'] <= t1)]
-    return sub_trades[['price', 'size']].to_dict('records')
-
-ob_df['trades'] = ob_df.apply(collect_trades, axis=1)
-
-
-import pandas as pd
-import numpy as np
-
-def compute_optimal_order_size_full(lambda_rate, mu_rate, delta_rate, expected_executed, max_z=100):
+def estimate_N_star_from_merged_ob(ob_df, side='Buy', N_target=100):
     """
-    Compute optimal N* using full Aldridge formula with geometric queue distribution.
+    Estimate optimal order size N* using pre-merged order book data with embedded trades.
+
+    Parameters:
+    - ob_df: DataFrame with 'trades', 'bid0', 'ask0', 'bidSize0', 'askSize0',
+             'bidSize0_prev', 'askSize0_prev'
+    - side: 'Buy' or 'Sell'
+    - N_target: target executed volume
+
+    Returns:
+    - dict of estimated parameters and N* (simple and strict versions)
     """
-    rho = lambda_rate / (mu_rate + delta_rate)
-    if rho >= 1:
-        raise ValueError("Unstable queue: lambda must be less than mu + delta")
 
-    inner_geom_sum = rho / (1 - rho)
-    A = sum(z * (1 / (1 + inner_geom_sum)) * (rho ** z) for z in range(1, max_z + 1))
-    N_star = 0.5 * (expected_executed + np.sqrt(expected_executed**2 + 4 * expected_executed * A))
-    return N_star, lambda_rate, mu_rate, delta_rate
+    def estimate_mu(row):
+        price_col = 'bid0' if side == 'Buy' else 'ask0'
+        trades = row['trades']
+        if side == 'Buy':
+            relevant = [t for t in trades if t['price'] <= row[price_col]]
+        else:
+            relevant = [t for t in trades if t['price'] >= row[price_col]]
+        return sum(t['size'] for t in relevant)
 
-def infer_trade_side(row):
-    if pd.notna(row.get('side')):
-        return row['side']
-    if pd.notna(row.get('bid0')) and pd.notna(row.get('ask0')):
-        mid = (row['bid0'] + row['ask0']) / 2
-        return 'buy' if row['price'] >= mid else 'sell'
-    return None
+    def estimate_delta(row):
+        size_col = 'bidSize0' if side == 'Buy' else 'askSize0'
+        price_col = 'bid0' if side == 'Buy' else 'ask0'
+        prev_size = row[size_col + '_prev']
+        curr_size = row[size_col]
+        trades = row['trades']
+        if side == 'Buy':
+            relevant = [t for t in trades if t['price'] <= row[price_col]]
+        else:
+            relevant = [t for t in trades if t['price'] >= row[price_col]]
+        traded = sum(t['size'] for t in relevant)
+        return max(prev_size - curr_size - traded, 0)
 
-def calculate_N_star_from_data(orderbook_df, trade_df, current_time, side='buy', N_target=100, window_minutes=5):
-    """
-    Calculate optimal order size N* using orderbook and trade data.
-    """
-    window_start = current_time - pd.Timedelta(minutes=window_minutes)
-    window_seconds = window_minutes * 60
+    def estimate_lambda(row):
+        size_col = 'bidSize0' if side == 'Buy' else 'askSize0'
+        price_col = 'bid0' if side == 'Buy' else 'ask0'
+        prev_size = row[size_col + '_prev']
+        curr_size = row[size_col]
+        trades = row['trades']
+        if side == 'Buy':
+            relevant = [t for t in trades if t['price'] <= row[price_col]]
+        else:
+            relevant = [t for t in trades if t['price'] >= row[price_col]]
+        traded = sum(t['size'] for t in relevant)
+        return max(curr_size - prev_size - traded, 0)
 
-    ob = orderbook_df[(orderbook_df['streamTime'] >= window_start) & (orderbook_df['streamTime'] <= current_time)].copy()
-    tr = trade_df[(trade_df['streamTime'] >= window_start) & (trade_df['streamTime'] <= current_time)].copy()
+    ob_df = ob_df.copy()
+    ob_df['mu_volume'] = ob_df.apply(estimate_mu, axis=1)
+    ob_df['delta_volume'] = ob_df.apply(estimate_delta, axis=1)
+    ob_df['lambda_volume'] = ob_df.apply(estimate_lambda, axis=1)
 
-    ob = ob.sort_values('streamTime')
-    size_col = 'bidSize0' if side == 'buy' else 'askSize0'
-    price_col = 'bid0' if side == 'buy' else 'ask0'
+    total_time = (ob_df['streamTime'].iloc[-1] - ob_df['streamTime'].iloc[0]).total_seconds()
+    lambda_rate = ob_df['lambda_volume'].sum() / total_time
+    mu_rate = ob_df['mu_volume'].sum() / total_time
+    delta_rate = ob_df['delta_volume'].sum() / total_time
 
-    size_diff = ob[size_col].diff()
-    price_diff = ob[price_col].diff()
+    expected_z = lambda_rate / (mu_rate + delta_rate - lambda_rate)
+    N_star_simple = compute_optimal_order_size_simple(expected_z, N_target)
+    N_star_strict = compute_optimal_order_size_strict(lambda_rate, mu_rate, delta_rate, N_target)
 
-    lambda_volume = size_diff[(size_diff > 0) | (price_diff > 0)].sum()
-    delta_volume = -size_diff[(size_diff < 0) | (price_diff < 0)].sum()
-    lambda_rate = lambda_volume / window_seconds
-    delta_rate = delta_volume / window_seconds
-
-    latest_quotes = ob[['streamTime', 'bid0', 'ask0']].set_index('streamTime')
-    tr = tr.set_index('streamTime').join(latest_quotes, how='left').reset_index()
-    tr['inferred_side'] = tr.apply(infer_trade_side, axis=1)
-    opposing_side = 'sell' if side == 'buy' else 'buy'
-    mu_volume = tr.loc[tr['inferred_side'] == opposing_side, 'size'].sum()
-    mu_rate = mu_volume / window_seconds
-
-    N_star, lambda_out, mu_out, delta_out = compute_optimal_order_size_full(lambda_rate, mu_rate, delta_rate, N_target)
     return {
-        'N_star': N_star,
-        'lambda': lambda_out,
-        'mu': mu_out,
-        'delta': delta_out
+        'lambda': lambda_rate,
+        'mu': mu_rate,
+        'delta': delta_rate,
+        'expected_z': expected_z,
+        'N_star_simple': N_star_simple,
+        'N_star_strict': N_star_strict
     }
