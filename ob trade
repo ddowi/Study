@@ -1,25 +1,31 @@
-def estimate_N_star_from_merged_ob(ob_df, side='Buy', N_target=100):
+def estimate_N_star_at_time(ob_df, timestamp, side='Buy', N_target=100, lookback_minutes=5):
     """
-    Estimate optimal order size N* using pre-merged order book data with embedded trades.
+    Estimate optimal order size N* at a specific timestamp using lookback window.
 
     Parameters:
-    - ob_df: DataFrame with 'trades', 'bid0', 'ask0', 'bidSize0', 'askSize0',
-             optionally 'bidSize0_prev', 'askSize0_prev'
+    - ob_df: DataFrame with 'streamTime', 'bid0', 'ask0', 'bidSize0', 'askSize0', 'trades'
+    - timestamp: pd.Timestamp, the moment you want to place the passive order
     - side: 'Buy' or 'Sell'
     - N_target: target executed volume
+    - lookback_minutes: how many minutes to look back from timestamp
 
     Returns:
     - dict of estimated parameters and N* (simple and strict versions)
     """
 
-    ob_df = ob_df.sort_values('streamTime').reset_index(drop=True)
+    end_time = pd.to_datetime(timestamp)
+    start_time = end_time - pd.Timedelta(minutes=lookback_minutes)
+    df = ob_df[(ob_df['streamTime'] >= start_time) & (ob_df['streamTime'] <= end_time)].copy()
 
-    # Ensure prev size columns exist
-    if 'bidSize0_prev' not in ob_df.columns or 'askSize0_prev' not in ob_df.columns:
-        ob_df['bidSize0_prev'] = ob_df['bidSize0'].shift(1)
-        ob_df['askSize0_prev'] = ob_df['askSize0'].shift(1)
-        ob_df.loc[0, 'bidSize0_prev'] = ob_df.loc[0, 'bidSize0']
-        ob_df.loc[0, 'askSize0_prev'] = ob_df.loc[0, 'askSize0']
+    if df.empty:
+        raise ValueError("No order book data in the specified time window.")
+
+    df = df.sort_values('streamTime').reset_index(drop=True)
+
+    df['bidSize0_prev'] = df['bidSize0'].shift(1)
+    df['askSize0_prev'] = df['askSize0'].shift(1)
+    df.loc[0, 'bidSize0_prev'] = df.loc[0, 'bidSize0']
+    df.loc[0, 'askSize0_prev'] = df.loc[0, 'askSize0']
 
     def estimate_mu(row):
         price_col = 'bid0' if side == 'Buy' else 'ask0'
@@ -56,20 +62,27 @@ def estimate_N_star_from_merged_ob(ob_df, side='Buy', N_target=100):
         traded = sum(t['size'] for t in relevant)
         return max(curr_size - prev_size - traded, 0)
 
-    ob_df['mu_volume'] = ob_df.apply(estimate_mu, axis=1)
-    ob_df['delta_volume'] = ob_df.apply(estimate_delta, axis=1)
-    ob_df['lambda_volume'] = ob_df.apply(estimate_lambda, axis=1)
+    df['mu_volume'] = df.apply(estimate_mu, axis=1)
+    df['delta_volume'] = df.apply(estimate_delta, axis=1)
+    df['lambda_volume'] = df.apply(estimate_lambda, axis=1)
 
-    total_time = (ob_df['streamTime'].iloc[-1] - ob_df['streamTime'].iloc[0]).total_seconds()
-    lambda_rate = ob_df['lambda_volume'].sum() / total_time
-    mu_rate = ob_df['mu_volume'].sum() / total_time
-    delta_rate = ob_df['delta_volume'].sum() / total_time
+    total_time = (df['streamTime'].iloc[-1] - df['streamTime'].iloc[0]).total_seconds()
+    lambda_rate = df['lambda_volume'].sum() / total_time
+    mu_rate = df['mu_volume'].sum() / total_time
+    delta_rate = df['delta_volume'].sum() / total_time
 
     denominator = mu_rate + delta_rate - lambda_rate
     if denominator <= 0 or np.isnan(denominator):
-        raise ValueError(f"Invalid queue state: denominator = {denominator:.4f}")
-    expected_z = lambda_rate / denominator
+        return {
+            'lambda': lambda_rate,
+            'mu': mu_rate,
+            'delta': delta_rate,
+            'expected_z': np.inf,
+            'N_star_simple': N_target,
+            'N_star_strict': N_target
+        }
 
+    expected_z = lambda_rate / denominator
     N_star_simple = compute_optimal_order_size_simple(expected_z, N_target)
     N_star_strict = compute_optimal_order_size_strict(lambda_rate, mu_rate, delta_rate, N_target)
 
