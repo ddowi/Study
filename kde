@@ -1,75 +1,72 @@
 import numpy as np
-from scipy.stats import gaussian_kde
-from scipy.integrate import quad
+from scipy.optimize import minimize_scalar
 import matplotlib.pyplot as plt
+
+# 1. 预设：Pi(Q, m), Fill(Q, m), Gamma(Q) 都基于给定的 fM 函数（通过闭包注入）
+def get_fast_gamma_function(fM_callable, Q_obs, S_i, lam, m_max=500, n_points=300):
+    """
+    构造快速求解 Gamma(Q) 的函数，使用向量化近似积分
+    """
+    m_grid = np.linspace(0, m_max, n_points)
+    fm_vals = np.array([fM_callable(m) for m in m_grid])
+    dm = m_grid[1] - m_grid[0]
+
+    def gamma(Q):
+        fill_vals = Q / (Q + Q_obs) * m_grid
+        pi_vals = np.where(
+            fill_vals <= S_i,
+            0.5 * fill_vals,
+            0.5 * S_i - lam * (fill_vals - S_i)
+        )
+        return np.sum(pi_vals * fm_vals) * dm
+
+    return gamma, m_grid, fm_vals, dm
+
+# 2. 使用 minimize_scalar 优化 Gamma(Q)
+def optimize_Q_star(fM_callable, Q_obs, S_i, lam, Q_min=None, Q_max=None):
+    """
+    在区间 [Q_min, Q_max] 上寻找最优 Q*
+    """
+    if Q_min is None:
+        Q_min = S_i
+    if Q_max is None:
+        Q_max = 5 * S_i
+
+    gamma_fn, m_grid, fm_vals, dm = get_fast_gamma_function(fM_callable, Q_obs, S_i, lam)
+
+    result = minimize_scalar(
+        lambda Q: -gamma_fn(Q),
+        bounds=(Q_min, Q_max),
+        method='bounded'
+    )
+
+    Q_star = result.x
+    gamma_star = -result.fun
+
+    return Q_star, gamma_star, gamma_fn, m_grid, fm_vals
+
+# 示例：你可以替换 fM_callable 为你拟合好的 KDE 函数（如 log-KDE）
+# 暂时给出一个占位的 fM（右偏 exponential）
+def placeholder_fM(m):
+    return np.exp(-0.02 * m) if m >= 0 else 0
+
+# 参数设定
+Q_obs = 1000
+S_i = 50
+lam = 1.5
+
+# 快速优化
+Q_star, gamma_star, gamma_fn, m_grid, fm_vals = optimize_Q_star(placeholder_fM, Q_obs, S_i, lam)
+
+# 生成展示数据
+Q_grid = np.linspace(S_i, 5 * S_i, 100)
+gamma_grid = [gamma_fn(Q) for Q in Q_grid]
+
+import pandas as pd
 import ace_tools as tools
-
-# 1. 离线拟合 KDE f_M
-def fit_kde_fM(trade_sizes, bandwidth='scott'):
-    kde = gaussian_kde(trade_sizes, bw_method=bandwidth)
-    return kde
-
-# 2. 定义 fill 函数
-def fill(Q, m, Q_obs):
-    return Q / (Q + Q_obs) * m
-
-# 3. 定义收益函数 Pi(Q, m)
-def Pi(Q, m, Q_obs, S_i, lam):
-    f = fill(Q, m, Q_obs)
-    if f <= S_i:
-        return 0.5 * f
-    else:
-        return 0.5 * S_i - lam * (f - S_i)
-
-# 4. 计算期望收益 Gamma(Q)（积分）
-def Gamma(Q, kde_fM, Q_obs, S_i, lam, upper_m=None):
-    def integrand(m):
-        return Pi(Q, m, Q_obs, S_i, lam) * kde_fM(m)
-    
-    if upper_m is None:
-        upper_m = kde_fM.dataset.max() * 2
-
-    val, _ = quad(integrand, 0, upper_m, limit=200)
-    return val
-
-# 5. 找到最优 Q*（grid search）
-def find_optimal_Q(kde_fM, Q_obs, S_i, lam, Q_grid=None):
-    if Q_grid is None:
-        Q_grid = np.linspace(S_i, 5 * S_i, 100)
-
-    gamma_vals = [Gamma(Q, kde_fM, Q_obs, S_i, lam) for Q in Q_grid]
-    optimal_idx = np.argmax(gamma_vals)
-    Q_star = Q_grid[optimal_idx]
-    gamma_star = gamma_vals[optimal_idx]
-
-    return Q_star, gamma_star, Q_grid, gamma_vals
-
-# 6. 示例构造数据并展示曲线
-np.random.seed(42)
-# 模拟三个月的 market order size 数据（可替换为真实数据）
-trade_sizes = np.concatenate([
-    np.random.exponential(scale=5, size=3000),  # 小单为主
-    np.random.exponential(scale=20, size=300)   # 偶尔大单
-])
-
-# 离线拟合 KDE
-kde_fM = fit_kde_fM(trade_sizes)
-
-# 输入参数
-S_i = 10        # 你希望成交的目标
-Q_obs = 200     # 当前 order book 其他人挂的总量
-lam = 0.5       # overfill 每张平均损失（单位：tick）
-
-# 求最优 Q*
-Q_star, gamma_star, Q_grid, gamma_vals = find_optimal_Q(kde_fM, Q_obs, S_i, lam)
-
-# 展示
-tools.display_dataframe_to_user("Gamma vs Q", 
-    dataframe = 
-        tools.pd.DataFrame({
-            "Q": Q_grid,
-            "Expected Profit": gamma_vals
-        })
-)
+tools.display_dataframe_to_user("Fast Gamma vs Q", pd.DataFrame({
+    "Q": Q_grid,
+    "Expected Profit": gamma_grid
+}))
 
 Q_star, gamma_star
