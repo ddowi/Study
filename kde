@@ -1,0 +1,75 @@
+import numpy as np
+from scipy.stats import gaussian_kde
+from scipy.integrate import quad
+import matplotlib.pyplot as plt
+import ace_tools as tools
+
+# 1. 离线拟合 KDE f_M
+def fit_kde_fM(trade_sizes, bandwidth='scott'):
+    kde = gaussian_kde(trade_sizes, bw_method=bandwidth)
+    return kde
+
+# 2. 定义 fill 函数
+def fill(Q, m, Q_obs):
+    return Q / (Q + Q_obs) * m
+
+# 3. 定义收益函数 Pi(Q, m)
+def Pi(Q, m, Q_obs, S_i, lam):
+    f = fill(Q, m, Q_obs)
+    if f <= S_i:
+        return 0.5 * f
+    else:
+        return 0.5 * S_i - lam * (f - S_i)
+
+# 4. 计算期望收益 Gamma(Q)（积分）
+def Gamma(Q, kde_fM, Q_obs, S_i, lam, upper_m=None):
+    def integrand(m):
+        return Pi(Q, m, Q_obs, S_i, lam) * kde_fM(m)
+    
+    if upper_m is None:
+        upper_m = kde_fM.dataset.max() * 2
+
+    val, _ = quad(integrand, 0, upper_m, limit=200)
+    return val
+
+# 5. 找到最优 Q*（grid search）
+def find_optimal_Q(kde_fM, Q_obs, S_i, lam, Q_grid=None):
+    if Q_grid is None:
+        Q_grid = np.linspace(S_i, 5 * S_i, 100)
+
+    gamma_vals = [Gamma(Q, kde_fM, Q_obs, S_i, lam) for Q in Q_grid]
+    optimal_idx = np.argmax(gamma_vals)
+    Q_star = Q_grid[optimal_idx]
+    gamma_star = gamma_vals[optimal_idx]
+
+    return Q_star, gamma_star, Q_grid, gamma_vals
+
+# 6. 示例构造数据并展示曲线
+np.random.seed(42)
+# 模拟三个月的 market order size 数据（可替换为真实数据）
+trade_sizes = np.concatenate([
+    np.random.exponential(scale=5, size=3000),  # 小单为主
+    np.random.exponential(scale=20, size=300)   # 偶尔大单
+])
+
+# 离线拟合 KDE
+kde_fM = fit_kde_fM(trade_sizes)
+
+# 输入参数
+S_i = 10        # 你希望成交的目标
+Q_obs = 200     # 当前 order book 其他人挂的总量
+lam = 0.5       # overfill 每张平均损失（单位：tick）
+
+# 求最优 Q*
+Q_star, gamma_star, Q_grid, gamma_vals = find_optimal_Q(kde_fM, Q_obs, S_i, lam)
+
+# 展示
+tools.display_dataframe_to_user("Gamma vs Q", 
+    dataframe = 
+        tools.pd.DataFrame({
+            "Q": Q_grid,
+            "Expected Profit": gamma_vals
+        })
+)
+
+Q_star, gamma_star
