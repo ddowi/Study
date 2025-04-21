@@ -1,0 +1,20 @@
+from collections import Counter
+
+def DiscreteKDE(data, alpha=1.0):
+    count = Counter(data)
+    min_m = min(data)
+    max_m = max(data)
+    support = range(min_m, max_m + 1)
+    K = len(support)
+    N = len(data)
+
+    # 加一平滑后的 PMF
+    pmf = {m: (count.get(m, 0) + alpha) / (N + alpha * K) for m in support}
+    
+    def kde(m):
+        # 对支持范围之外的点返回极小值（或0）
+        if m < min_m or m > max_m:
+            return alpha / (N + alpha * K)  # 也可以设为 0.0
+        return pmf[m]
+
+    return kde
