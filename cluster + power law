@@ -1,0 +1,228 @@
+import pandas as pd
+import numpy as np
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import silhouette_score
+import matplotlib.pyplot as plt
+
+# -------------------------
+# Step 1: 定义 Feature Extraction 带 Side Expansion（适配你的数据格式）
+# -------------------------
+def extract_market_features_with_side(obdata, window_minutes=5):
+    obdata = obdata.copy()
+    obdata['timestamp'] = pd.to_datetime(obdata['timestamp'])
+    obdata = obdata.sort_values('timestamp')
+
+    current_time = obdata.iloc[-1]['timestamp']
+    window_start = current_time - pd.Timedelta(minutes=window_minutes)
+    window_data = obdata[(obdata['timestamp'] >= window_start) & (obdata['timestamp'] <= current_time)]
+
+    if len(window_data) < 10:  # 至少10条snapshot，否则返回None
+        return None
+
+    features = {}
+
+    for side in ['ask', 'bid']:
+        spread = obdata.iloc[-1]['askPrice'] - obdata.iloc[-1]['bidPrice']
+        top_depth = obdata.iloc[-1]['bidSize'] + obdata.iloc[-1]['askSize']
+
+        mid_prices = (window_data['bidPrice'] + window_data['askPrice']) / 2
+        volatility = mid_prices.pct_change().std()
+
+        relevant_trade_sizes = []
+        for _, row in window_data.iterrows():
+            trades = row['trades']
+            if trades:
+                bid_price = row['bidPrice']
+                ask_price = row['askPrice']
+                for trade in trades:
+                    trade_price = trade['price']
+                    trade_size = trade['size']
+                    if side == 'ask':
+                        if trade_price >= ask_price:
+                            relevant_trade_sizes.append(trade_size)
+                    elif side == 'bid':
+                        if trade_price <= bid_price:
+                            relevant_trade_sizes.append(trade_size)
+
+        volume_weighted_trade_rate = sum(relevant_trade_sizes) / window_minutes
+
+        if (obdata.iloc[-1]['bidSize'] + obdata.iloc[-1]['askSize']) == 0:
+            imbalance = np.nan  # 防止除0错误
+        else:
+            if side == 'ask':
+                imbalance = obdata.iloc[-1]['bidSize'] / (obdata.iloc[-1]['bidSize'] + obdata.iloc[-1]['askSize'])
+            elif side == 'bid':
+                imbalance = obdata.iloc[-1]['askSize'] / (obdata.iloc[-1]['bidSize'] + obdata.iloc[-1]['askSize'])
+
+        feature_row = {
+            'spread': spread,
+            'top_depth': top_depth,
+            'volatility': volatility,
+            'volume_weighted_trade_rate': volume_weighted_trade_rate,
+            'imbalance': imbalance,
+            'side': side
+        }
+
+        # 检查是否有NaN
+        if any(pd.isna(val) for val in feature_row.values() if isinstance(val, (int, float))):
+            features[side] = None
+        else:
+            features[side] = feature_row
+
+    return features
+
+# -------------------------
+# Step 2: 批量生成训练数据 (Side Expansion) 并drop掉有问题的行
+# -------------------------
+def prepare_training_data(obdata_full, window_minutes=5):
+    feature_rows = []
+    
+    for i in range(window_minutes, len(obdata_full)):
+        window = obdata_full.iloc[:i+1]
+        feature_dicts = extract_market_features_with_side(window, window_minutes=window_minutes)
+        
+        if feature_dicts is None:
+            continue
+
+        for side in ['ask', 'bid']:
+            feature_row = feature_dicts.get(side)
+            if feature_row is None:
+                continue  # 这个side的feature有NaN，跳过
+            feature_rows.append(feature_row)
+
+    feature_df = pd.DataFrame(feature_rows)
+    return feature_df
+
+# -------------------------
+# Step 3: 训练k-means Clustering
+# -------------------------
+def train_kmeans(X_scaled, k_range=(2, 8)):
+    inertia_list = []
+    silhouette_list = []
+
+    for k in range(k_range[0], k_range[1]):
+        kmeans = KMeans(n_clusters=k, random_state=42)
+        labels = kmeans.fit_predict(X_scaled)
+        inertia_list.append(kmeans.inertia_)
+        silhouette_list.append(silhouette_score(X_scaled, labels))
+
+    plt.figure(figsize=(12,5))
+    plt.subplot(1,2,1)
+    plt.plot(range(k_range[0], k_range[1]), inertia_list, marker='o')
+    plt.title('Elbow Method (Inertia)')
+    plt.xlabel('Number of clusters k')
+    plt.ylabel('Inertia')
+
+    plt.subplot(1,2,2)
+    plt.plot(range(k_range[0], k_range[1]), silhouette_list, marker='o')
+    plt.title('Silhouette Score')
+    plt.xlabel('Number of clusters k')
+    plt.ylabel('Silhouette score')
+
+    plt.tight_layout()
+    plt.show()
+
+    optimal_k = int(input("Select optimal k based on plots: "))
+
+    kmeans_final = KMeans(n_clusters=optimal_k, random_state=42)
+    kmeans_final.fit(X_scaled)
+    
+    return kmeans_final
+
+
+
+================================================================================================
+
+
+import numpy as np
+import scipy.stats as stats
+import matplotlib.pyplot as plt
+from powerlaw import Fit
+import warnings
+
+# 忽略警告信息
+warnings.filterwarnings('ignore')
+
+# 示例数据：请替换为您的实际成交量数据
+# 这里我们生成一个混合分布的数据作为示例
+np.random.seed(42)
+M_small = np.random.lognormal(mean=np.log(4), sigma=1.0, size=500000)
+M_large = (np.random.pareto(a=2.5, size=5000) + 1) * 30
+M_list = np.concatenate([M_small, M_large])
+M_list = M_list[M_list > 1]  # 保证所有值大于1
+
+# 定义候选阈值范围
+thresholds = np.arange(10, 200, 5)
+
+# 存储每个阈值对应的总对数似然
+log_likelihoods = []
+
+for threshold in thresholds:
+    M_small = M_list[M_list <= threshold]
+    M_large = M_list[M_list > threshold]
+
+    # 如果大单或小单数量太少，跳过该阈值
+    if len(M_small) < 50 or len(M_large) < 50:
+        log_likelihoods.append(-np.inf)
+        continue
+
+    # 拟合小单部分的对数正态分布
+    try:
+        shape, loc, scale = stats.lognorm.fit(M_small, floc=0)
+        ll_small = np.sum(stats.lognorm.logpdf(M_small, shape, loc=loc, scale=scale))
+    except Exception:
+        ll_small = -np.inf
+
+    # 拟合大单部分的幂律分布
+    try:
+        fit = Fit(M_large, xmin=threshold, discrete=False)
+        ll_large = fit.power_law.loglikelihood
+    except Exception:
+        ll_large = -np.inf
+
+    total_ll = ll_small + ll_large
+    log_likelihoods.append(total_ll)
+
+# 找到最大总对数似然对应的阈值
+optimal_idx = np.argmax(log_likelihoods)
+optimal_threshold = thresholds[optimal_idx]
+
+print(f"最优阈值为: {optimal_threshold}")
+
+# 使用最优阈值重新拟合
+M_small = M_list[M_list <= optimal_threshold]
+M_large = M_list[M_list > optimal_threshold]
+
+# 拟合小单部分的对数正态分布
+shape, loc, scale = stats.lognorm.fit(M_small, floc=0)
+
+# 拟合大单部分的幂律分布
+fit = Fit(M_large, xmin=optimal_threshold, discrete=False)
+alpha = fit.power_law.alpha
+xmin = fit.power_law.xmin
+
+print(f"对数正态分布参数: shape={shape:.4f}, loc={loc:.4f}, scale={scale:.4f}")
+print(f"幂律分布参数: alpha={alpha:.4f}, xmin={xmin:.4f}")
+
+# 绘制拟合结果
+fig, axs = plt.subplots(1, 2, figsize=(14, 6))
+
+# 小单部分的对数正态分布拟合
+sorted_small = np.sort(M_small)
+cdf_small = np.arange(1, len(sorted_small) + 1) / len(sorted_small)
+axs[0].plot(sorted_small, cdf_small, label='Empirical CDF')
+axs[0].plot(sorted_small, stats.lognorm.cdf(sorted_small, shape, loc=loc, scale=scale), label='Lognormal Fit')
+axs[0].set_title('小单部分的对数正态分布拟合')
+axs[0].legend()
+axs[0].grid(True)
+
+# 大单部分的幂律分布拟合
+fit.plot_ccdf(ax=axs[1], label='Empirical CCDF')
+fit.power_law.plot_ccdf(ax=axs[1], color='r', linestyle='--', label='Power-law Fit')
+axs[1].set_title('大单部分的幂律分布拟合')
+axs[1].legend()
+axs[1].grid(True)
+
+plt.tight_layout()
+plt.show()
