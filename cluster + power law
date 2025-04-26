@@ -6,25 +6,21 @@ from sklearn.metrics import silhouette_score
 import matplotlib.pyplot as plt
 
 # -------------------------
-# Step 1: 定义 Feature Extraction 带 Side Expansion（适配你的数据格式）
+# Step 1: 定义 Feature Extraction 带 Side Expansion（逐行动态处理）
 # -------------------------
-def extract_market_features_with_side(obdata, window_minutes=5):
-    obdata = obdata.copy()
-    obdata['timestamp'] = pd.to_datetime(obdata['timestamp'])
-    obdata = obdata.sort_values('timestamp')
-
-    current_time = obdata.iloc[-1]['timestamp']
-    window_start = current_time - pd.Timedelta(minutes=window_minutes)
-    window_data = obdata[(obdata['timestamp'] >= window_start) & (obdata['timestamp'] <= current_time)]
-
-    if len(window_data) < 10:  # 至少10条snapshot，否则返回None
+def extract_market_features_with_side(window_data, latest_row, side, window_minutes=5):
+    """
+    window_data: 过去window_minutes内的obdata（包含trades列）
+    latest_row: 当前处理的那一行ob snapshot
+    side: 'ask' or 'bid'
+    window_minutes: 多少分钟window
+    """
+    if len(window_data) < 10:
         return None
 
-    features = {}
-
-    for side in ['ask', 'bid']:
-        spread = obdata.iloc[-1]['askPrice'] - obdata.iloc[-1]['bidPrice']
-        top_depth = obdata.iloc[-1]['bidSize'] + obdata.iloc[-1]['askSize']
+    try:
+        spread = latest_row['askPrice'] - latest_row['bidPrice']
+        top_depth = latest_row['bidSize'] + latest_row['askSize']
 
         mid_prices = (window_data['bidPrice'] + window_data['askPrice']) / 2
         volatility = mid_prices.pct_change().std()
@@ -47,13 +43,13 @@ def extract_market_features_with_side(obdata, window_minutes=5):
 
         volume_weighted_trade_rate = sum(relevant_trade_sizes) / window_minutes
 
-        if (obdata.iloc[-1]['bidSize'] + obdata.iloc[-1]['askSize']) == 0:
-            imbalance = np.nan  # 防止除0错误
+        if (latest_row['bidSize'] + latest_row['askSize']) == 0:
+            imbalance = np.nan
         else:
             if side == 'ask':
-                imbalance = obdata.iloc[-1]['bidSize'] / (obdata.iloc[-1]['bidSize'] + obdata.iloc[-1]['askSize'])
+                imbalance = latest_row['bidSize'] / (latest_row['bidSize'] + latest_row['askSize'])
             elif side == 'bid':
-                imbalance = obdata.iloc[-1]['askSize'] / (obdata.iloc[-1]['bidSize'] + obdata.iloc[-1]['askSize'])
+                imbalance = latest_row['askSize'] / (latest_row['bidSize'] + latest_row['askSize'])
 
         feature_row = {
             'spread': spread,
@@ -64,32 +60,37 @@ def extract_market_features_with_side(obdata, window_minutes=5):
             'side': side
         }
 
-        # 检查是否有NaN
         if any(pd.isna(val) for val in feature_row.values() if isinstance(val, (int, float))):
-            features[side] = None
-        else:
-            features[side] = feature_row
+            return None
 
-    return features
+        return feature_row
+
+    except:
+        return None
 
 # -------------------------
-# Step 2: 批量生成训练数据 (Side Expansion) 并drop掉有问题的行
+# Step 2: 批量生成训练数据 (严格逐行+滚动窗口)
 # -------------------------
 def prepare_training_data(obdata_full, window_minutes=5):
+    """
+    obdata_full: 完整obdata，包含['timestamp', 'bidPrice', 'bidSize', 'askPrice', 'askSize', 'trades']
+    返回: 特征DataFrame
+    """
+    obdata_full = obdata_full.copy()
+    obdata_full['timestamp'] = pd.to_datetime(obdata_full['timestamp'])
+    obdata_full = obdata_full.sort_values('timestamp')
+
     feature_rows = []
-    
-    for i in range(window_minutes, len(obdata_full)):
-        window = obdata_full.iloc[:i+1]
-        feature_dicts = extract_market_features_with_side(window, window_minutes=window_minutes)
-        
-        if feature_dicts is None:
-            continue
+
+    for idx, latest_row in obdata_full.iterrows():
+        current_time = latest_row['timestamp']
+        window_start = current_time - pd.Timedelta(minutes=window_minutes)
+        window_data = obdata_full[(obdata_full['timestamp'] >= window_start) & (obdata_full['timestamp'] <= current_time)]
 
         for side in ['ask', 'bid']:
-            feature_row = feature_dicts.get(side)
-            if feature_row is None:
-                continue  # 这个side的feature有NaN，跳过
-            feature_rows.append(feature_row)
+            feature_row = extract_market_features_with_side(window_data, latest_row, side, window_minutes)
+            if feature_row is not None:
+                feature_rows.append(feature_row)
 
     feature_df = pd.DataFrame(feature_rows)
     return feature_df
@@ -129,6 +130,7 @@ def train_kmeans(X_scaled, k_range=(2, 8)):
     kmeans_final.fit(X_scaled)
     
     return kmeans_final
+
 
 
 
