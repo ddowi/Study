@@ -6,31 +6,25 @@ from sklearn.metrics import silhouette_score
 import matplotlib.pyplot as plt
 
 # -------------------------
-# Step 1: 定义 Feature Extraction 带 Side Expansion（逐行动态处理）
+# Step 1: 定义 Feature Extraction 带 Side Expansion（逐行动态处理，不跨天，字段更新）
 # -------------------------
 def extract_market_features_with_side(window_data, latest_row, side, window_minutes=5):
-    """
-    window_data: 过去window_minutes内的obdata（包含trades列）
-    latest_row: 当前处理的那一行ob snapshot
-    side: 'ask' or 'bid'
-    window_minutes: 多少分钟window
-    """
     if len(window_data) < 10:
         return None
 
     try:
-        spread = latest_row['askPrice'] - latest_row['bidPrice']
-        top_depth = latest_row['bidSize'] + latest_row['askSize']
+        spread = latest_row['ask0'] - latest_row['bid0']
+        top_depth = latest_row['bidSize0'] + latest_row['askSize0']
 
-        mid_prices = (window_data['bidPrice'] + window_data['askPrice']) / 2
+        mid_prices = (window_data['bid0'] + window_data['ask0']) / 2
         volatility = mid_prices.pct_change().std()
 
         relevant_trade_sizes = []
         for _, row in window_data.iterrows():
             trades = row['trades']
             if trades:
-                bid_price = row['bidPrice']
-                ask_price = row['askPrice']
+                bid_price = row['bid0']
+                ask_price = row['ask0']
                 for trade in trades:
                     trade_price = trade['price']
                     trade_size = trade['size']
@@ -43,13 +37,13 @@ def extract_market_features_with_side(window_data, latest_row, side, window_minu
 
         volume_weighted_trade_rate = sum(relevant_trade_sizes) / window_minutes
 
-        if (latest_row['bidSize'] + latest_row['askSize']) == 0:
+        if (latest_row['bidSize0'] + latest_row['askSize0']) == 0:
             imbalance = np.nan
         else:
             if side == 'ask':
-                imbalance = latest_row['bidSize'] / (latest_row['bidSize'] + latest_row['askSize'])
+                imbalance = latest_row['bidSize0'] / (latest_row['bidSize0'] + latest_row['askSize0'])
             elif side == 'bid':
-                imbalance = latest_row['askSize'] / (latest_row['bidSize'] + latest_row['askSize'])
+                imbalance = latest_row['askSize0'] / (latest_row['bidSize0'] + latest_row['askSize0'])
 
         feature_row = {
             'spread': spread,
@@ -69,23 +63,23 @@ def extract_market_features_with_side(window_data, latest_row, side, window_minu
         return None
 
 # -------------------------
-# Step 2: 批量生成训练数据 (严格逐行+滚动窗口)
+# Step 2: 批量生成训练数据 (严格逐行+滚动窗口+不跨天)
 # -------------------------
 def prepare_training_data(obdata_full, window_minutes=5):
-    """
-    obdata_full: 完整obdata，包含['timestamp', 'bidPrice', 'bidSize', 'askPrice', 'askSize', 'trades']
-    返回: 特征DataFrame
-    """
     obdata_full = obdata_full.copy()
-    obdata_full['timestamp'] = pd.to_datetime(obdata_full['timestamp'])
-    obdata_full = obdata_full.sort_values('timestamp')
+    obdata_full['streamTime'] = pd.to_datetime(obdata_full['streamTime'])
+    obdata_full = obdata_full.sort_values('streamTime')
 
     feature_rows = []
 
     for idx, latest_row in obdata_full.iterrows():
-        current_time = latest_row['timestamp']
+        current_time = latest_row['streamTime']
         window_start = current_time - pd.Timedelta(minutes=window_minutes)
-        window_data = obdata_full[(obdata_full['timestamp'] >= window_start) & (obdata_full['timestamp'] <= current_time)]
+        window_data = obdata_full[
+            (obdata_full['streamTime'] >= window_start) & 
+            (obdata_full['streamTime'] <= current_time) &
+            (obdata_full['streamTime'].dt.date == current_time.date())
+        ]
 
         for side in ['ask', 'bid']:
             feature_row = extract_market_features_with_side(window_data, latest_row, side, window_minutes)
