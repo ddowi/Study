@@ -6,91 +6,65 @@ from sklearn.metrics import silhouette_score
 import matplotlib.pyplot as plt
 
 # -------------------------
-# Step 1: 定义 Feature Extraction 带 Side Expansion（逐行动态处理，不跨天，字段更新）
+# Step 1: 最简洁高速版 Feature Extraction（全向量化）
 # -------------------------
-def extract_market_features_with_side(window_data, latest_row, side, window_minutes=5):
-    if len(window_data) < 10:
-        return None
-
-    try:
-        spread = latest_row['ask0'] - latest_row['bid0']
-        top_depth = latest_row['bidSize0'] + latest_row['askSize0']
-
-        mid_prices = (window_data['bid0'] + window_data['ask0']) / 2
-        volatility = mid_prices.pct_change().std()
-
-        relevant_trade_sizes = []
-        for _, row in window_data.iterrows():
-            trades = row['trades']
-            if trades:
-                bid_price = row['bid0']
-                ask_price = row['ask0']
-                for trade in trades:
-                    trade_price = trade['price']
-                    trade_size = trade['size']
-                    if side == 'ask':
-                        if trade_price >= ask_price:
-                            relevant_trade_sizes.append(trade_size)
-                    elif side == 'bid':
-                        if trade_price <= bid_price:
-                            relevant_trade_sizes.append(trade_size)
-
-        volume_weighted_trade_rate = sum(relevant_trade_sizes) / window_minutes
-
-        if (latest_row['bidSize0'] + latest_row['askSize0']) == 0:
-            imbalance = np.nan
-        else:
-            if side == 'ask':
-                imbalance = latest_row['bidSize0'] / (latest_row['bidSize0'] + latest_row['askSize0'])
-            elif side == 'bid':
-                imbalance = latest_row['askSize0'] / (latest_row['bidSize0'] + latest_row['askSize0'])
-
-        feature_row = {
-            'spread': spread,
-            'top_depth': top_depth,
-            'volatility': volatility,
-            'volume_weighted_trade_rate': volume_weighted_trade_rate,
-            'imbalance': imbalance,
-            'side': side
-        }
-
-        if any(pd.isna(val) for val in feature_row.values() if isinstance(val, (int, float))):
-            return None
-
-        return feature_row
-
-    except:
-        return None
-
-# -------------------------
-# Step 2: 批量生成训练数据 (严格逐行+滚动窗口+不跨天)
-# -------------------------
-def prepare_training_data(obdata_full, window_minutes=5):
+def extract_features_fast(obdata_full, window_minutes=5):
     obdata_full = obdata_full.copy()
     obdata_full['streamTime'] = pd.to_datetime(obdata_full['streamTime'])
     obdata_full = obdata_full.sort_values('streamTime')
 
+    obdata_full['midprice'] = (obdata_full['bid0'] + obdata_full['ask0']) / 2
+    obdata_full['spread'] = obdata_full['ask0'] - obdata_full['bid0']
+    obdata_full['top_depth'] = obdata_full['bidSize0'] + obdata_full['askSize0']
+    obdata_full['imbalance_ask'] = obdata_full['bidSize0'] / (obdata_full['bidSize0'] + obdata_full['askSize0'])
+    obdata_full['imbalance_bid'] = obdata_full['askSize0'] / (obdata_full['bidSize0'] + obdata_full['askSize0'])
+
+    timestamps = obdata_full['streamTime'].values
+    midprices = obdata_full['midprice'].values
+    spread = obdata_full['spread'].values
+    top_depth = obdata_full['top_depth'].values
+    imbalance_ask = obdata_full['imbalance_ask'].values
+    imbalance_bid = obdata_full['imbalance_bid'].values
+
     feature_rows = []
+    n = len(obdata_full)
 
-    for idx, latest_row in obdata_full.iterrows():
-        current_time = latest_row['streamTime']
-        window_start = current_time - pd.Timedelta(minutes=window_minutes)
-        window_data = obdata_full[
-            (obdata_full['streamTime'] >= window_start) & 
-            (obdata_full['streamTime'] <= current_time) &
-            (obdata_full['streamTime'].dt.date == current_time.date())
-        ]
+    for i in range(n):
+        current_time = timestamps[i]
+        window_start_time = current_time - np.timedelta64(window_minutes, 'm')
+        if pd.Timestamp(current_time).date() != pd.Timestamp(window_start_time).date():
+            continue
 
-        for side in ['ask', 'bid']:
-            feature_row = extract_market_features_with_side(window_data, latest_row, side, window_minutes)
-            if feature_row is not None:
-                feature_rows.append(feature_row)
+        idx_start = np.searchsorted(timestamps, window_start_time, side='left')
+        idx_end = i
 
-    feature_df = pd.DataFrame(feature_rows)
-    return feature_df
+        if idx_start >= idx_end:
+            continue
+
+        window_midprices = midprices[idx_start:idx_end+1]
+        returns = np.diff(window_midprices) / window_midprices[:-1]
+        volatility = np.std(returns)
+
+        if not np.isfinite(volatility):
+            continue
+
+        for side, imb in [('ask', imbalance_ask[i]), ('bid', imbalance_bid[i])]:
+            if not np.isfinite(imb):
+                continue
+
+            feature_rows.append({
+                'spread': spread[i],
+                'top_depth': top_depth[i],
+                'volatility': volatility,
+                'imbalance': imb,
+                'side': side,
+                'streamTime': pd.Timestamp(current_time)
+            })
+
+    return pd.DataFrame(feature_rows)
 
 # -------------------------
-# Step 3: 训练k-means Clustering
+# Step 2: 训练k-means Clustering（不变）
 # -------------------------
 def train_kmeans(X_scaled, k_range=(2, 8)):
     inertia_list = []
