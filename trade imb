@@ -1,0 +1,45 @@
+alpha = 0.1
+
+# 平滑买卖方的交易间隔
+df['avg_buy_interval'] = None
+df['avg_sell_interval'] = None
+df.loc[df['is_buyer_maker'] == True, 'avg_buy_interval'] = \
+    df[df['is_buyer_maker'] == True]['transact_time'].diff().ewm(alpha=alpha).mean()
+df.loc[df['is_buyer_maker'] == False, 'avg_sell_interval'] = \
+    df[df['is_buyer_maker'] == False]['transact_time'].diff().ewm(alpha=alpha).mean()
+
+# 平滑买卖方的成交数量
+df['avg_buy_quantity'] = None
+df['avg_sell_quantity'] = None
+df.loc[df['is_buyer_maker'] == True, 'avg_buy_quantity'] = \
+    df[df['is_buyer_maker'] == True]['quantity'].ewm(alpha=alpha).mean()
+df.loc[df['is_buyer_maker'] == False, 'avg_sell_quantity'] = \
+    df[df['is_buyer_maker'] == False]['quantity'].ewm(alpha=alpha).mean()
+
+
+# 向前填补缺失值
+df['avg_buy_quantity'] = df['avg_buy_quantity'].fillna(method='ffill')
+df['avg_sell_quantity'] = df['avg_sell_quantity'].fillna(method='ffill')
+df['avg_buy_interval'] = df['avg_buy_interval'].fillna(method='ffill')
+df['avg_sell_interval'] = df['avg_sell_interval'].fillna(method='ffill')
+
+# 计算成交频率（次/秒）
+df['avg_buy_rate'] = 1000 / df['avg_buy_interval']
+df['avg_sell_rate'] = -1000 / df['avg_sell_interval']
+
+# 估算每秒成交量（单位数量）
+df['avg_buy_volume'] = df['avg_buy_rate'] * df['avg_buy_quantity']
+df['avg_sell_volume'] = df['avg_sell_rate'] * df['avg_sell_quantity']
+
+
+# Orderbook imbalance（基于 top-of-book）
+df['I'] = (df['best_bid_qty'] - df['best_ask_qty']) / (df['best_bid_qty'] + df['best_ask_qty'])
+
+# Rate imbalance（成交频率差异）
+df['OI'] = (df['avg_buy_rate'] - df['avg_sell_rate']) / (df['avg_buy_rate'] + df['avg_sell_rate'])
+
+# Quantity imbalance（成交均值数量差异）
+df['QI'] = (df['avg_buy_quantity'] - df['avg_sell_quantity']) / (df['avg_buy_quantity'] + df['avg_sell_quantity'])
+
+# Volume imbalance（基于估算成交量）
+df['VI'] = (df['avg_buy_volume'] - df['avg_sell_volume']) / (df['avg_buy_volume'] + df['avg_sell_volume'])
