@@ -1,0 +1,46 @@
+from datetime import datetime, timedelta
+
+def iso_week_to_date(iso_year, iso_week):
+    """
+    Convert ISO year and ISO week to date of Monday.
+    """
+    return datetime.strptime(f"{iso_year}-W{iso_week}-1", "%G-W%V-%u")
+
+def get_prev_week(week_str):
+    """
+    Get the previous ISO week.
+    """
+    iso_year = int(week_str[:4])
+    iso_week = int(week_str[4:])
+    # Convert to Monday date
+    d = iso_week_to_date(iso_year, iso_week)
+    # Subtract 1 week
+    prev = d - timedelta(weeks=1)
+    iso = prev.isocalendar()
+    # Format YYYYWW
+    return f"{iso[0]}{str(iso[1]).zfill(2)}"
+
+def get_next_week(week_str):
+    """
+    Get the next ISO week.
+    """
+    iso_year = int(week_str[:4])
+    iso_week = int(week_str[4:])
+    d = iso_week_to_date(iso_year, iso_week)
+    next_ = d + timedelta(weeks=1)
+    iso = next_.isocalendar()
+    return f"{iso[0]}{str(iso[1]).zfill(2)}"
+
+def get_prev_weeks(week_str, n_weeks=24):
+    """
+    Get a list of previous n_weeks ISO week numbers before the given week.
+    """
+    iso_year = int(week_str[:4])
+    iso_week = int(week_str[4:])
+    d = iso_week_to_date(iso_year, iso_week)
+    prev_weeks = []
+    for i in range(1, n_weeks + 1):
+        prev = d - timedelta(weeks=i)
+        iso = prev.isocalendar()
+        prev_weeks.append(f"{iso[0]}{str(iso[1]).zfill(2)}")
+    return prev_weeks
